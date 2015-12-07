@@ -39,7 +39,7 @@ public class NSUserDefaults : NSObject {
             return registeredDefaults[defaultName]
         }
         
-        guard let anObj = CFPreferencesCopyAppValue(suite?._cfObject ?? defaultName._cfObject, kCFPreferencesCurrentApplication) else {
+        guard let anObj = CFPreferencesCopyAppValue(defaultName._cfObject, suite?._cfObject ?? kCFPreferencesCurrentApplication) else {
             return getFromRegistered()
         }
         
@@ -69,7 +69,7 @@ public class NSUserDefaults : NSObject {
     }
     public func setObject(value: AnyObject?, forKey defaultName: String) {
         guard let value = value else {
-            CFPreferencesSetAppValue(suite?._cfObject ?? defaultName._cfObject, nil, kCFPreferencesCurrentApplication)
+            CFPreferencesSetAppValue(defaultName._cfObject, nil, suite?._cfObject ?? kCFPreferencesCurrentApplication)
             return
         }
         
@@ -107,19 +107,15 @@ public class NSUserDefaults : NSObject {
         } else if let bType = value as? Bool {
             cfType = NSNumber(bool: bType)._cfObject
         } else if let bType = value as? [NSObject: AnyObject] {
-            let nsDict = NSMutableDictionary()
-            for (key, value) in bType {
-                nsDict[key] = value
-            }
-            cfType = nsDict._cfObject
+            cfType = bType._cfObject
         } else if let bType = value as? [AnyObject] {
-            cfType = NSArray(array: bType)._cfObject
+            cfType = bType._cfObject
         }
         
-        CFPreferencesSetAppValue(suite?._cfObject ?? defaultName._cfObject, cfType, kCFPreferencesCurrentApplication)
+        CFPreferencesSetAppValue(defaultName._cfObject, cfType, suite?._cfObject ?? kCFPreferencesCurrentApplication)
     }
     public func removeObjectForKey(defaultName: String) {
-        CFPreferencesSetAppValue(suite?._cfObject ?? defaultName._cfObject, nil, kCFPreferencesCurrentApplication)
+        CFPreferencesSetAppValue(defaultName._cfObject, nil, suite?._cfObject ?? kCFPreferencesCurrentApplication)
     }
     
     public func stringForKey(defaultName: String) -> String? {

@@ -17,7 +17,6 @@ private var registeredDefaults = [String: AnyObject]()
 private var sharedDefaults = NSUserDefaults()
 
 public class NSUserDefaults : NSObject {
-    private let appID: String
     private let suite: String?
     
     public class func standardUserDefaults() -> NSUserDefaults {
@@ -33,7 +32,6 @@ public class NSUserDefaults : NSObject {
     }
     public init?(suiteName suitename: String?) {
         suite = suitename
-        appID = kCFPreferencesCurrentApplication._swiftObject
     } //nil suite means use the default search list that +standardUserDefaults uses
     
     public func objectForKey(defaultName: String) -> AnyObject? {
@@ -41,7 +39,7 @@ public class NSUserDefaults : NSObject {
             return registeredDefaults[defaultName]
         }
         
-        guard let anObj = CFPreferencesCopyAppValue(suite?._cfObject ?? defaultName._cfObject, appID._cfObject) else {
+        guard let anObj = CFPreferencesCopyAppValue(suite?._cfObject ?? defaultName._cfObject, kCFPreferencesCurrentApplication) else {
             return getFromRegistered()
         }
         
@@ -51,7 +49,7 @@ public class NSUserDefaults : NSObject {
             return (anObj as! CFStringRef)._swiftObject
             
         case CFNumberGetTypeID():
-            return (anObj as! NSNumber)
+            return unsafeBitCast(anObj, NSNumber.self)
             
         case CFURLGetTypeID():
             return (anObj as! CFURLRef)._nsObject
@@ -71,7 +69,7 @@ public class NSUserDefaults : NSObject {
     }
     public func setObject(value: AnyObject?, forKey defaultName: String) {
         guard let value = value else {
-            CFPreferencesSetAppValue(suite?._cfObject ?? defaultName._cfObject, nil, appID._cfObject)
+            CFPreferencesSetAppValue(suite?._cfObject ?? defaultName._cfObject, nil, kCFPreferencesCurrentApplication)
             return
         }
         
@@ -118,10 +116,10 @@ public class NSUserDefaults : NSObject {
             cfType = NSArray(array: bType)._cfObject
         }
         
-        CFPreferencesSetAppValue(suite?._cfObject ?? defaultName._cfObject, cfType, appID._cfObject)
+        CFPreferencesSetAppValue(suite?._cfObject ?? defaultName._cfObject, cfType, kCFPreferencesCurrentApplication)
     }
     public func removeObjectForKey(defaultName: String) {
-        CFPreferencesSetAppValue(suite?._cfObject ?? defaultName._cfObject, nil, appID._cfObject)
+        CFPreferencesSetAppValue(suite?._cfObject ?? defaultName._cfObject, nil, kCFPreferencesCurrentApplication)
     }
     
     public func stringForKey(defaultName: String) -> String? {
@@ -208,14 +206,14 @@ public class NSUserDefaults : NSObject {
     }
     
     public func addSuiteNamed(suiteName: String) {
-        CFPreferencesAddSuitePreferencesToApp(appID._cfObject, suiteName._cfObject)
+        CFPreferencesAddSuitePreferencesToApp(kCFPreferencesCurrentApplication, suiteName._cfObject)
     }
     public func removeSuiteNamed(suiteName: String) {
-        CFPreferencesRemoveSuitePreferencesFromApp(appID._cfObject, suiteName._cfObject)
+        CFPreferencesRemoveSuitePreferencesFromApp(kCFPreferencesCurrentApplication, suiteName._cfObject)
     }
     
     public func dictionaryRepresentation() -> [String : AnyObject] {
-        guard let aPref = CFPreferencesCopyMultiple(nil, appID._cfObject, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost),
+        guard let aPref = CFPreferencesCopyMultiple(nil, kCFPreferencesCurrentApplication, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost),
             bPref = (aPref._nsObject) as? [String: AnyObject] else {
                 return registeredDefaults
         }
@@ -237,7 +235,7 @@ public class NSUserDefaults : NSObject {
     public func setPersistentDomain(domain: [String : AnyObject], forName domainName: String) { NSUnimplemented() }
     public func removePersistentDomainForName(domainName: String) { NSUnimplemented() }
     
-    public func synchronize() -> Bool { return CFPreferencesAppSynchronize(appID._cfObject) }
+    public func synchronize() -> Bool { return CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication) }
     
     public func objectIsForcedForKey(key: String) -> Bool { NSUnimplemented() }
     public func objectIsForcedForKey(key: String, inDomain domain: String) -> Bool { NSUnimplemented() }

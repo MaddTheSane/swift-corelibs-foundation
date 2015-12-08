@@ -656,6 +656,7 @@
 				5B5D885E1BBC938800234F36 /* Products */,
 			);
 			sourceTree = "<group>";
+			usesTabs = 0;
 		};
 		5B5D885E1BBC938800234F36 /* Products */ = {
 			isa = PBXGroup;

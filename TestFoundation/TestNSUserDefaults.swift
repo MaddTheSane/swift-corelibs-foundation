@@ -15,7 +15,7 @@
 	import SwiftXCTest
 #endif
 
-class testNSUserDefaults : XCTestCase {
+class TestNSUserDefaults : XCTestCase {
 	var allTests : [(String, () -> ())] {
 		return [
 			("test_createUserDefaults", test_createUserDefaults ),

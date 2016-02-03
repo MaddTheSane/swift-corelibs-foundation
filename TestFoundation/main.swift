@@ -64,8 +64,8 @@ XCTMain([
     TestNSURLResponse(),
     TestNSNull(),
     TestNSUUID(),
-    testNSUserDefaults(),
     TestNSValue(),
+    TestNSUserDefaults(),
     TestNSXMLParser(),
     TestNSXMLDocument()
 ])

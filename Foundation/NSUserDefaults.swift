@@ -89,7 +89,8 @@ public class NSUserDefaults : NSObject {
         } else if let bType = value as? NSDictionary {
             cfType = bType._cfObject
         } else if let bType = value as? NSURL {
-            cfType = bType._cfObject
+			setURL(bType, forKey: defaultName)
+			return
         } else if let bType = value as? NSData {
             cfType = bType._cfObject
             //Swift types

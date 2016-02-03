@@ -130,16 +130,16 @@ public class NSUserDefaults : NSObject {
     }
     
     public func stringForKey(defaultName: String) -> String? {
-        guard let aVal = objectForKey(defaultName), bVal = aVal as? String else {
+        guard let aVal = objectForKey(defaultName), bVal = aVal as? NSString else {
             return nil
         }
-        return bVal
+        return bVal._swiftObject
     }
     public func arrayForKey(defaultName: String) -> [AnyObject]? {
-        guard let aVal = objectForKey(defaultName), bVal = aVal as? [AnyObject] else {
+        guard let aVal = objectForKey(defaultName), bVal = aVal as? NSArray else {
             return nil
         }
-        return bVal
+        return bVal._swiftObject
     }
     public func dictionaryForKey(defaultName: String) -> [String : AnyObject]? {
         guard let aVal = objectForKey(defaultName), bVal = aVal as? [String: AnyObject] else {
@@ -154,10 +154,10 @@ public class NSUserDefaults : NSObject {
         return bVal
     }
     public func stringArrayForKey(defaultName: String) -> [String]? {
-        guard let aVal = objectForKey(defaultName), bVal = aVal as? [String] else {
+        guard let aVal = objectForKey(defaultName), bVal = aVal as? NSArray else {
             return nil
         }
-        return bVal
+        return (bVal._swiftObject as? [NSString])?.map({ return $0._swiftObject})
     }
     public func integerForKey(defaultName: String) -> Int {
         guard let aVal = objectForKey(defaultName), bVal = aVal as? NSNumber else {

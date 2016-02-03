@@ -54,7 +54,7 @@ typedef struct {
 
 
 CONST_STRING_DECL(kCFStreamPropertyFileCurrentOffset, "kCFStreamPropertyFileCurrentOffset");
-#if DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI
+#if DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI || DEPLOYMENT_TARGET_LINUX
 CONST_STRING_DECL(_kCFStreamPropertyFileNativeHandle, "_kCFStreamPropertyFileNativeHandle");
 #endif
 
@@ -87,7 +87,7 @@ static Boolean constructFD(_CFFileStreamContext *fileStream, CFStreamError *erro
     wchar_t path[CFMaxPathSize];
     flags |= (_O_BINARY|_O_NOINHERIT);
     if (_CFURLGetWideFileSystemRepresentation(fileStream->url, TRUE, path, CFMaxPathSize) == FALSE)
-#elif DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI
+#elif DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI || DEPLOYMENT_TARGET_LINUX
     char path[CFMaxPathSize];
     if (CFURLGetFileSystemRepresentation(fileStream->url, TRUE, (UInt8 *)path, CFMaxPathSize) == FALSE)
 #endif
@@ -102,7 +102,7 @@ static Boolean constructFD(_CFFileStreamContext *fileStream, CFStreamError *erro
     }
     
     do {
-#if DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI
+#if DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI || DEPLOYMENT_TARGET_LINUX
         fileStream->fd = open((const char *)path, flags, 0666);
 #elif DEPLOYMENT_TARGET_WINDOWS
 	fileStream->fd = _wopen(path, flags, 0666);
@@ -422,7 +422,7 @@ static CFTypeRef fileCopyProperty(struct _CFStream *stream, CFStringRef property
         if (fileStream->offset != -1) {
             result = CFNumberCreate(CFGetAllocator((CFTypeRef)stream), kCFNumberSInt64Type, &(fileStream->offset));
         }
-#if DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI
+#if DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI || DEPLOYMENT_TARGET_LINUX
     } else if (CFEqual(propertyName, _kCFStreamPropertyFileNativeHandle)) {
 		int fd = fileStream->fd;
 		if (fd != -1) {
@@ -592,21 +592,23 @@ static CFIndex dataRead(CFReadStreamRef stream, UInt8 *buffer, CFIndex bufferLen
 
 static const UInt8 *dataGetBuffer(CFReadStreamRef stream, CFIndex maxBytesToRead, CFIndex *numBytesRead, CFStreamError *error, Boolean *atEOF, void *info) {
     _CFReadDataStreamContext *dataCtxt = (_CFReadDataStreamContext *)info;
-    const UInt8 *bytes = CFDataGetBytePtr(dataCtxt->data);
-    if (dataCtxt->loc - bytes > maxBytesToRead) {
+    const UInt8 *bytePtr = CFDataGetBytePtr(dataCtxt->data);
+    CFIndex length = CFDataGetLength(dataCtxt->data);
+    CFIndex bytesToRead = bytePtr + length - dataCtxt->loc;
+    if (bytesToRead > maxBytesToRead) {
         *numBytesRead = maxBytesToRead;
         *atEOF = FALSE;
     } else {
-        *numBytesRead = dataCtxt->loc - bytes;
+        *numBytesRead = bytesToRead;
         *atEOF = TRUE;
     }
     error->error = 0;
-    bytes = dataCtxt->loc;
+    const UInt8 *buffer = dataCtxt->loc;
     dataCtxt->loc += *numBytesRead;
     if (dataCtxt->scheduled && !*atEOF) {
         CFReadStreamSignalEvent(stream, kCFStreamEventHasBytesAvailable, NULL);
     }
-    return bytes;
+    return buffer;
 }
 
 static Boolean dataCanRead(CFReadStreamRef stream, void *info) {

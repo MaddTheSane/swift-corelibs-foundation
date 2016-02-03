@@ -80,7 +80,7 @@
 #include <stdbool.h>
 #endif
 
-  #if (TARGET_OS_MAC && !(TARGET_OS_EMBEDDED || TARGET_OS_IPHONE)) || (TARGET_OS_EMBEDDED || TARGET_OS_IPHONE)
+  #if ((TARGET_OS_MAC && !(TARGET_OS_EMBEDDED || TARGET_OS_IPHONE)) || (TARGET_OS_EMBEDDED || TARGET_OS_IPHONE)) && !DEPLOYMENT_RUNTIME_SWIFT
     #include <libkern/OSTypes.h>
   #endif
 
@@ -123,6 +123,7 @@
     typedef UInt16                  UTF16Char;
     typedef UInt8                   UTF8Char;
 #endif
+
 
 #if !defined(CF_EXTERN_C_BEGIN)
 #if defined(__cplusplus)
@@ -231,14 +232,6 @@ CF_EXTERN_C_BEGIN
 #define CF_AUTOMATED_REFCOUNT_UNAVAILABLE
 #endif
 
-#if DEPLOYMENT_RUNTIME_SWIFT
-#ifndef CF_ASSUME_NONNULL_BEGIN
-#define CF_ASSUME_NONNULL_BEGIN _Pragma("clang assume_nonnull begin")
-#endif
-#ifndef CF_ASSUME_NONNULL_BEGIN
-#define CF_ASSUME_NONNULL_END   _Pragma("clang assume_nonnull end")
-#endif
-#endif
 
 #ifndef CF_IMPLICIT_BRIDGING_ENABLED
 #if __has_feature(arc_cf_code_audited)
@@ -647,9 +640,9 @@ void CFRelease(CFTypeRef cf);
 #else
 CF_EXPORT
 CFTypeRef CFAutorelease(CFTypeRef CF_RELEASES_ARGUMENT arg) CF_AVAILABLE(10_9, 7_0);
-#endif
 CF_EXPORT
 CFIndex CFGetRetainCount(CFTypeRef cf);
+#endif
 
 CF_EXPORT
 Boolean CFEqual(CFTypeRef cf1, CFTypeRef cf2);

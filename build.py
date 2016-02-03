@@ -14,20 +14,24 @@ foundation = DynamicLibrary("Foundation")
 foundation.GCC_PREFIX_HEADER = 'CoreFoundation/Base.subproj/CoreFoundation_Prefix.h'
 
 if Configuration.current.target.sdk == OSType.Linux:
-	foundation.CFLAGS = '-DDEPLOYMENT_TARGET_LINUX '
-	foundation.LDFLAGS = '-Wl,@./CoreFoundation/linux.ld -lswiftGlibc `icu-config --ldflags` -Wl,-defsym,__CFConstantStringClassReference=_TMC10Foundation19_NSCFConstantString '
+	foundation.CFLAGS = '-DDEPLOYMENT_TARGET_LINUX -D_GNU_SOURCE '
+	foundation.LDFLAGS = '-Wl,@./CoreFoundation/linux.ld -Xlinker -T ${SDKROOT}/lib/swift/linux/${ARCH}/swift.ld -lswiftGlibc `icu-config --ldflags` -Wl,-defsym,__CFConstantStringClassReference=_TMC10Foundation19_NSCFConstantString -Wl,-Bsymbolic '
+
+elif Configuration.current.target.sdk == OSType.FreeBSD:
+	foundation.CFLAGS = '-DDEPLOYMENT_TARGET_FREEBSD -I/usr/local/include -I/usr/local/include/libxml2 '
+	foundation.LDFLAGS = ''
 elif Configuration.current.target.sdk == OSType.MacOSX:
 	foundation.CFLAGS = '-DDEPLOYMENT_TARGET_MACOSX '
 	foundation.LDFLAGS = '-licucore -twolevel_namespace -Wl,-alias_list,CoreFoundation/Base.subproj/DarwinSymbolAliases -sectcreate __UNICODE __csbitmaps CoreFoundation/CharacterSets/CFCharacterSetBitmaps.bitmap -sectcreate __UNICODE __properties CoreFoundation/CharacterSets/CFUniCharPropertyDatabase.data -sectcreate __UNICODE __data CoreFoundation/CharacterSets/CFUnicodeData-L.mapping -segprot __UNICODE r r '
 
 # For now, we do not distinguish between public and private headers (they are all private to Foundation)
 # These are really part of CF, which should ultimately be a separate target
-foundation.ROOT_HEADERS_FOLDER_PATH = "/usr/lib/swift"
-foundation.PUBLIC_HEADERS_FOLDER_PATH = "/usr/lib/swift/CoreFoundation"
-foundation.PRIVATE_HEADERS_FOLDER_PATH = "/usr/lib/swift/CoreFoundation"
-foundation.PROJECT_HEADERS_FOLDER_PATH = "/usr/lib/swift/CoreFoundation"
+foundation.ROOT_HEADERS_FOLDER_PATH = "${PREFIX}/lib/swift"
+foundation.PUBLIC_HEADERS_FOLDER_PATH = "${PREFIX}/lib/swift/CoreFoundation"
+foundation.PRIVATE_HEADERS_FOLDER_PATH = "${PREFIX}/lib/swift/CoreFoundation"
+foundation.PROJECT_HEADERS_FOLDER_PATH = "${PREFIX}/lib/swift/CoreFoundation"
 
-foundation.PUBLIC_MODULE_FOLDER_PATH = "/usr/lib/swift/CoreFoundation"
+foundation.PUBLIC_MODULE_FOLDER_PATH = "${PREFIX}/lib/swift/CoreFoundation"
 
 foundation.CFLAGS += " ".join([
 	'-DU_SHOW_DRAFT_API',
@@ -47,13 +51,15 @@ foundation.CFLAGS += " ".join([
 ])
 
 swift_cflags = [
-	'-I${BUILD_DIR}/Foundation/usr/lib/swift'
+	'-I${BUILD_DIR}/Foundation/usr/lib/swift',
+	'-I/usr/include/libxml2'
 ]
 
 if "XCTEST_BUILD_DIR" in Configuration.current.variables:
 	swift_cflags += [
 		'-I${XCTEST_BUILD_DIR}',
 		'-L${XCTEST_BUILD_DIR}',
+		'-I/usr/include/libxml2'
 	]
 foundation.SWIFTCFLAGS = " ".join(swift_cflags)
 
@@ -145,6 +151,7 @@ private = [
 	'CoreFoundation/String.subproj/CFCharacterSetPriv.h',
 	'CoreFoundation/Stream.subproj/CFStreamPriv.h',
 	'CoreFoundation/StringEncodings.subproj/CFICUConverters.h',
+	'CoreFoundation/String.subproj/CFRegularExpression.h',
 ],
 project = [
 ])
@@ -208,17 +215,18 @@ sources = CompileSources([
 	'CoreFoundation/Preferences.subproj/CFPreferences.c',
 	# 'CoreFoundation/RunLoop.subproj/CFMachPort.c',
 	# 'CoreFoundation/RunLoop.subproj/CFMessagePort.c',
-	# 'CoreFoundation/RunLoop.subproj/CFRunLoop.c',
-	# 'CoreFoundation/RunLoop.subproj/CFSocket.c',
-	# 'CoreFoundation/Stream.subproj/CFConcreteStreams.c',
-	# 'CoreFoundation/Stream.subproj/CFSocketStream.c',
-	# 'CoreFoundation/Stream.subproj/CFStream.c',
+	'CoreFoundation/RunLoop.subproj/CFRunLoop.c',
+	'CoreFoundation/RunLoop.subproj/CFSocket.c',
+	'CoreFoundation/Stream.subproj/CFConcreteStreams.c',
+	'CoreFoundation/Stream.subproj/CFSocketStream.c',
+	'CoreFoundation/Stream.subproj/CFStream.c',
 	'CoreFoundation/String.subproj/CFBurstTrie.c',
 	'CoreFoundation/String.subproj/CFCharacterSet.c',
 	'CoreFoundation/String.subproj/CFString.c',
 	'CoreFoundation/String.subproj/CFStringEncodings.c',
 	'CoreFoundation/String.subproj/CFStringScanner.c',
 	'CoreFoundation/String.subproj/CFStringUtilities.c',
+	'CoreFoundation/String.subproj/CFStringTransform.c',
 	'CoreFoundation/StringEncodings.subproj/CFBuiltinConverters.c',
 	'CoreFoundation/StringEncodings.subproj/CFICUConverters.c',
 	'CoreFoundation/StringEncodings.subproj/CFPlatformConverters.c',
@@ -234,6 +242,7 @@ sources = CompileSources([
 	'CoreFoundation/String.subproj/CFCharacterSetData.S',
 	'CoreFoundation/String.subproj/CFUnicodeDataL.S',
 	'CoreFoundation/String.subproj/CFUniCharPropertyDatabase.S',
+	'CoreFoundation/String.subproj/CFRegularExpression.c',
 ])
 
 sources.add_dependency(headers)
@@ -256,6 +265,7 @@ swift_sources = CompileSwiftSources([
 	'Foundation/NSCoder.swift',
 	'Foundation/NSComparisonPredicate.swift',
 	'Foundation/NSCompoundPredicate.swift',
+	'Foundation/NSConcreteValue.swift',
 	'Foundation/NSData.swift',
 	'Foundation/NSDate.swift',
 	'Foundation/NSDateComponentsFormatter.swift',
@@ -278,10 +288,13 @@ swift_sources = CompileSwiftSources([
 	'Foundation/NSIndexPath.swift',
 	'Foundation/NSIndexSet.swift',
 	'Foundation/NSJSONSerialization.swift',
+	'Foundation/NSKeyedCoderOldStyleArray.swift',
 	'Foundation/NSKeyedArchiver.swift',
+	'Foundation/NSKeyedUnarchiver.swift',
 	'Foundation/NSLengthFormatter.swift',
 	'Foundation/NSLocale.swift',
 	'Foundation/NSLock.swift',
+	'Foundation/NSLog.swift',
 	'Foundation/NSMassFormatter.swift',
 	'Foundation/NSNotification.swift',
 	'Foundation/NSNotificationQueue.swift',
@@ -302,17 +315,19 @@ swift_sources = CompileSwiftSources([
 	'Foundation/NSPropertyList.swift',
 	'Foundation/NSRange.swift',
 	'Foundation/NSRegularExpression.swift',
-	# 'Foundation/NSRunLoop.swift',
+	'Foundation/NSRunLoop.swift',
 	'Foundation/NSScanner.swift',
 	'Foundation/NSSet.swift',
 	'Foundation/NSSortDescriptor.swift',
+	'Foundation/NSSpecialValue.swift',
 	'Foundation/NSStream.swift',
 	'Foundation/NSString.swift',
+	'Foundation/String.swift',
 	'Foundation/NSSwiftRuntime.swift',
 	'Foundation/NSTask.swift',
 	'Foundation/NSTextCheckingResult.swift',
 	'Foundation/NSThread.swift',
-	# 'Foundation/NSTimer.swift',
+	'Foundation/NSTimer.swift',
 	'Foundation/NSTimeZone.swift',
 	'Foundation/NSURL.swift',
 	'Foundation/NSURLAuthenticationChallenge.swift',
@@ -345,6 +360,20 @@ foundation_tests_resources = CopyResources('TestFoundation', [
     'TestFoundation/Resources/Info.plist',
     'TestFoundation/Resources/NSURLTestData.plist',
     'TestFoundation/Resources/Test.plist',
+    'TestFoundation/Resources/NSStringTestData.txt',
+    'TestFoundation/Resources/NSXMLDocumentTestData.xml',
+    'TestFoundation/Resources/PropertyList-1.0.dtd',
+    'TestFoundation/Resources/NSXMLDTDTestData.xml',
+    'TestFoundation/Resources/NSKeyedUnarchiver-ArrayTest.plist',
+    'TestFoundation/Resources/NSKeyedUnarchiver-ComplexTest.plist',
+    'TestFoundation/Resources/NSKeyedUnarchiver-ConcreteValueTest.plist',
+    'TestFoundation/Resources/NSKeyedUnarchiver-EdgeInsetsTest.plist',
+    'TestFoundation/Resources/NSKeyedUnarchiver-NotificationTest.plist',
+    'TestFoundation/Resources/NSKeyedUnarchiver-RangeTest.plist',
+    'TestFoundation/Resources/NSKeyedUnarchiver-RectTest.plist',
+    'TestFoundation/Resources/NSKeyedUnarchiver-URLTest.plist',
+    'TestFoundation/Resources/NSKeyedUnarchiver-UUIDTest.plist',
+    'TestFoundation/Resources/NSKeyedUnarchiver-OrderedSetTest.plist',
 ])
 
 # TODO: Probably this should be another 'product', but for now it's simply a phase

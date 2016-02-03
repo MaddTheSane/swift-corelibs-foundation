@@ -563,7 +563,7 @@ CF_PRIVATE void __CFFinalizeWindowsThreadData() {
 #endif
 
 
-#if DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI || DEPLOYMENT_TARGET_LINUX
+#if DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI || DEPLOYMENT_TARGET_LINUX || DEPLOYMENT_TARGET_FREEBSD
 static pthread_key_t __CFTSDIndexKey;
 #endif
 
@@ -1062,7 +1062,7 @@ CF_PRIVATE int _NS_gettimeofday(struct timeval *tv, struct timezone *tz) {
 #pragma mark -
 #pragma mark Linux OSAtomic
 
-#if DEPLOYMENT_TARGET_LINUX
+#if defined(DEPLOYMENT_TARGET_LINUX) || defined(DEPLOYMENT_TARGET_FREEBSD)
 
 bool OSAtomicCompareAndSwapPtr(void *oldp, void *newp, void *volatile *dst) 
 { 
@@ -1269,6 +1269,18 @@ int _CFOpenFileWithMode(const char *path, int opts, mode_t mode) {
 }
 int _CFOpenFile(const char *path, int opts) {
     return open(path, opts);
+}
+#endif
+
+#if DEPLOYMENT_RUNTIME_SWIFT
+CF_PRIVATE char **_CFEnviron(void) {
+#if DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED
+    return *_NSGetEnviron();
+#elif DEPLOYMENT_TARGET_WINDOWS
+    return _environ;
+#else
+    return environ;
+#endif
 }
 #endif
 

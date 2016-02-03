@@ -10,16 +10,8 @@
 
 import CoreFoundation
 
-extension Set : _ObjectiveCBridgeable {
-    public static func _isBridgedToObjectiveC() -> Bool {
-        return true
-    }
-    
-    public static func _getObjectiveCType() -> Any.Type {
-        return NSSet.self
-    }
-    
-    public func _bridgeToObjectiveC() -> NSSet {
+extension Set : _ObjectTypeBridgeable {
+    public func _bridgeToObject() -> NSSet {
         let buffer = UnsafeMutablePointer<AnyObject?>.alloc(count)
         
         for (idx, obj) in enumerate() {
@@ -34,7 +26,7 @@ extension Set : _ObjectiveCBridgeable {
         return set
     }
     
-    public static func _forceBridgeFromObjectiveC(x: NSSet, inout result: Set?) {
+    public static func _forceBridgeFromObject(x: NSSet, inout result: Set?) {
         var set = Set<Element>()
         var failedConversion = false
         
@@ -55,7 +47,7 @@ extension Set : _ObjectiveCBridgeable {
             
             CFSetGetValues(cf, objs)
             
-            for var idx = 0; idx < cnt; idx++ {
+            for idx in 0..<cnt {
                 let obj = unsafeBitCast(objs.advancedBy(idx), AnyObject.self)
                 if let o = obj as? Element {
                     set.insert(o)
@@ -72,32 +64,28 @@ extension Set : _ObjectiveCBridgeable {
         }
     }
     
-    public static func _conditionallyBridgeFromObjectiveC(x: NSSet, inout result: Set?) -> Bool {
-        self._forceBridgeFromObjectiveC(x, result: &result)
+    public static func _conditionallyBridgeFromObject(x: NSSet, inout result: Set?) -> Bool {
+        self._forceBridgeFromObject(x, result: &result)
         return true
     }
 }
 
 public class NSSet : NSObject, NSCopying, NSMutableCopying, NSSecureCoding, NSCoding {
     private let _cfinfo = _CFInfo(typeID: CFSetGetTypeID())
-    internal var _storage = Set<NSObject>()
+    internal var _storage: Set<NSObject>
     
     public var count: Int {
-        get {
-            if self.dynamicType === NSSet.self || self.dynamicType === NSMutableSet.self {
-                return _storage.count
-            } else {
-                NSRequiresConcreteImplementation()
-            }
+        if self.dynamicType === NSSet.self || self.dynamicType === NSMutableSet.self {
+            return _storage.count
+        } else {
+            NSRequiresConcreteImplementation()
         }
     }
     
     public func member(object: AnyObject) -> AnyObject? {
         if self.dynamicType === NSSet.self || self.dynamicType === NSMutableSet.self {
-            if let obj = object as? NSObject {
-                if _storage.contains(obj) {
-                    return obj // this is not exactly the same behavior, but it is reasonably close
-                }
+            if let obj = object as? NSObject where _storage.contains(obj) {
+                return obj // this is not exactly the same behavior, but it is reasonably close
             }
             return nil
         } else {
@@ -118,38 +106,101 @@ public class NSSet : NSObject, NSCopying, NSMutableCopying, NSSecureCoding, NSCo
     }
     
     public init(objects: UnsafePointer<AnyObject?>, count cnt: Int) {
+        _storage = Set(minimumCapacity: cnt)
         super.init()
-        for idx in 0..<cnt {
-            let obj = objects[idx] as! NSObject
-            _storage.insert(obj)
+        let buffer = UnsafeBufferPointer(start: objects, count: cnt)
+        for obj in buffer {
+            _storage.insert(obj as! NSObject)
         }
     }
     
     public required convenience init?(coder aDecoder: NSCoder) {
-        NSUnimplemented()
+        if !aDecoder.allowsKeyedCoding {
+            var cnt: UInt32 = 0
+            // We're stuck with (int) here (rather than unsigned int)
+            // because that's the way the code was originally written, unless
+            // we go to a new version of the class, which has its own problems.
+            withUnsafeMutablePointer(&cnt) { (ptr: UnsafeMutablePointer<UInt32>) -> Void in
+                aDecoder.decodeValueOfObjCType("i", at: UnsafeMutablePointer<Void>(ptr))
+            }
+            let objects = UnsafeMutablePointer<AnyObject?>.alloc(Int(cnt))
+            for idx in 0..<cnt {
+                objects.advancedBy(Int(idx)).initialize(aDecoder.decodeObject())
+            }
+            self.init(objects: UnsafePointer<AnyObject?>(objects), count: Int(cnt))
+            objects.destroy(Int(cnt))
+            objects.dealloc(Int(cnt))
+        } else if aDecoder.dynamicType == NSKeyedUnarchiver.self || aDecoder.containsValueForKey("NS.objects") {
+            let objects = aDecoder._decodeArrayOfObjectsForKey("NS.objects")
+            self.init(array: objects)
+        } else {
+            var objects = [AnyObject]()
+            var count = 0
+            while let object = aDecoder.decodeObjectForKey("NS.object.\(count)") {
+                objects.append(object)
+                count += 1
+            }
+            self.init(array: objects)
+        }
     }
     
     public func encodeWithCoder(aCoder: NSCoder) {
-        NSUnimplemented()
+        // The encoding of a NSSet is identical to the encoding of an NSArray of its contents
+        self.allObjects._nsObject.encodeWithCoder(aCoder)
+    }
+    
+    public override func copy() -> AnyObject {
+        return copyWithZone(nil)
     }
     
     public func copyWithZone(zone: NSZone) -> AnyObject {
-        NSUnimplemented()
+        if self.dynamicType === NSSet.self {
+            // return self for immutable type
+            return self
+        } else if self.dynamicType === NSMutableSet.self {
+            let set = NSSet()
+            set._storage = self._storage
+            return set
+        }
+        return NSSet(array: self.allObjects)
     }
     
+    public override func mutableCopy() -> AnyObject {
+        return mutableCopyWithZone(nil)
+    }
+
     public func mutableCopyWithZone(zone: NSZone) -> AnyObject {
-        NSUnimplemented()
+        if self.dynamicType === NSSet.self || self.dynamicType === NSMutableSet.self {
+            // always create and return an NSMutableSet
+            let mutableSet = NSMutableSet()
+            mutableSet._storage = self._storage
+            return mutableSet
+        }
+        return NSMutableSet(array: self.allObjects)
     }
-    
+
     public static func supportsSecureCoding() -> Bool {
         return true
     }
     
     public func descriptionWithLocale(locale: AnyObject?) -> String { NSUnimplemented() }
     
-    override internal var _cfTypeID: CFTypeID {
+    override public var _cfTypeID: CFTypeID {
         return CFSetGetTypeID()
     }
+
+    public override func isEqual(object: AnyObject?) -> Bool {
+        guard let otherObject = object where otherObject is NSSet else {
+            return false
+        }
+        let otherSet = otherObject as! NSSet
+        return self.isEqualToSet(otherSet.bridge())
+    }
+
+    public override var hash: Int {
+        return self.count
+    }
+
 }
 
 extension NSSet {
@@ -158,26 +209,22 @@ extension NSSet {
         self.init(array: [object])
     }
     
-    // public convenience init(set: Set<NSObject>) {
-    //     self.init(set: set, copyItems: false)
-    // }
+     public convenience init(set: Set<NSObject>) {
+         self.init(set: set, copyItems: false)
+     }
 
-    // public convenience init(set: Set<NSObject>, copyItems flag: Bool) {
-    //     var array = Array<NSObject>()
-    //     for object in set {
-    //         var value = object
-    //         if flag {
-    //             value = object.copy() as! NSObject
-    //         }
-    //         array.append(value)
-    //     }
-    //     self.init(array: array)
-    // }
+     public convenience init(set: Set<NSObject>, copyItems flag: Bool) {
+        var array = set.bridge().allObjects
+        if (flag) {
+            array = array.map() { ($0 as! NSObject).copy() }
+        }
+        self.init(array: array)
+     }
 
     public convenience init(array: [AnyObject]) {
         let buffer = UnsafeMutablePointer<AnyObject?>.alloc(array.count)
-        for var idx = 0; idx < array.count; idx++ {
-            buffer.advancedBy(idx).initialize(array[idx])
+        for (idx, element) in array.enumerate() {
+            buffer.advancedBy(idx).initialize(element)
         }
         self.init(objects: buffer, count: array.count)
         buffer.destroy(array.count)
@@ -188,18 +235,9 @@ extension NSSet {
 extension NSSet {
     
     public var allObjects: [AnyObject] {
-        get {
-            if self.dynamicType === NSSet.self || self.dynamicType === NSMutableSet.self {
-                return _storage.map { $0 }
-            } else {
-                var objects = [AnyObject]()
-                let enumerator = objectEnumerator()
-                while let obj = enumerator.nextObject() {
-                    objects.append(obj)
-                }
-                return objects
-            }
-        }
+        // Would be nice to use `Array(self)` here but compiler
+        // crashes on Linux @ swift 6e3e83c
+        return map { $0 }
     }
     
     public func anyObject() -> AnyObject? {
@@ -212,36 +250,19 @@ extension NSSet {
     
     public func intersectsSet(otherSet: Set<NSObject>) -> Bool {
         if count < otherSet.count {
-            for obj in allObjects {
-                if otherSet.contains(obj as! NSObject) {
-                    return true
-                }
-            }
+            return contains { obj in otherSet.contains(obj as! NSObject) }
         } else {
-            for obj in otherSet {
-                if containsObject(obj) {
-                    return true
-                }
-            }
+            return otherSet.contains { obj in containsObject(obj) }
         }
-        return false
     }
     
     public func isEqualToSet(otherSet: Set<NSObject>) -> Bool {
-        if count != otherSet.count {
-            return false
-        }
-        for obj in otherSet where !containsObject(obj) {
-            return false
-        }
-        return true
+        return count == otherSet.count && isSubsetOfSet(otherSet)
     }
     
     public func isSubsetOfSet(otherSet: Set<NSObject>) -> Bool {
-        for case let obj as NSObject in allObjects where !otherSet.contains(obj) {
-            return false
-        }
-        return true
+        // `true` if we don't contain any object that `otherSet` doesn't contain.
+        return !self.contains { obj in !otherSet.contains(obj as! NSObject) }
     }
 
     public func setByAddingObject(anObject: AnyObject) -> Set<NSObject> {
@@ -249,11 +270,10 @@ extension NSSet {
     }
     
     public func setByAddingObjectsFromSet(other: Set<NSObject>) -> Set<NSObject> {
-        var result: Set<NSObject>
+        var result = Set<NSObject>(minimumCapacity: max(count, other.count))
         if self.dynamicType === NSSet.self || self.dynamicType === NSMutableSet.self {
-            result = _storage
+            result.unionInPlace(_storage)
         } else {
-            result = Set<NSObject>()
             for case let obj as NSObject in self {
                 result.insert(obj)
             }
@@ -262,11 +282,10 @@ extension NSSet {
     }
     
     public func setByAddingObjectsFromArray(other: [AnyObject]) -> Set<NSObject> {
-        var result: Set<NSObject>
+        var result = Set<NSObject>(minimumCapacity: count)
         if self.dynamicType === NSSet.self || self.dynamicType === NSMutableSet.self {
-            result = _storage
+            result.unionInPlace(_storage)
         } else {
-            result = Set<NSObject>()
             for case let obj as NSObject in self {
                 result.insert(obj)
             }
@@ -312,7 +331,7 @@ extension NSSet : _CFBridgable, _SwiftBridgable {
     internal var _cfObject: CFSetRef { return unsafeBitCast(self, CFSetRef.self) }
     internal var _swiftObject: Set<NSObject> {
         var set: Set<NSObject>?
-        Set._forceBridgeFromObjectiveC(self, result: &set)
+        Set._forceBridgeFromObject(self, result: &set)
         return set!
     }
 }
@@ -323,7 +342,7 @@ extension CFSetRef : _NSBridgable, _SwiftBridgable {
 }
 
 extension Set : _NSBridgable, _CFBridgable {
-    internal var _nsObject: NSSet { return _bridgeToObjectiveC() }
+    internal var _nsObject: NSSet { return _bridgeToObject() }
     internal var _cfObject: CFSetRef { return _nsObject._cfObject }
 }
 
@@ -431,7 +450,7 @@ public class NSCountedSet : NSMutableSet {
     public required init(capacity numItems: Int) { NSUnimplemented() }
     
 //    public convenience init(array: [AnyObject]) { NSUnimplemented() }
-    public convenience init(set: Set<NSObject>) { NSUnimplemented() }
+//    public convenience init(set: Set<NSObject>) { NSUnimplemented() }
     public required convenience init?(coder: NSCoder) { NSUnimplemented() }
     
     public func countForObject(object: AnyObject) -> Int { NSUnimplemented() }

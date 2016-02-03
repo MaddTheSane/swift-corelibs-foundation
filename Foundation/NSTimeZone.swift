@@ -35,10 +35,46 @@ public class NSTimeZone : NSObject, NSCopying, NSSecureCoding, NSCoding {
         }
     }
     
-    public required init?(coder aDecoder: NSCoder) {
-        NSUnimplemented()
+    public convenience required init?(coder aDecoder: NSCoder) {
+        if aDecoder.allowsKeyedCoding {
+            let name = aDecoder.decodeObjectOfClass(NSString.self, forKey: "NS.name")
+            let data = aDecoder.decodeObjectOfClass(NSData.self, forKey: "NS.data")
+            
+            if name == nil {
+                return nil
+            }
+            
+            self.init(name: name!.bridge(), data: data)
+        } else {
+            if let name = aDecoder.decodeObject() as? NSString {
+                if aDecoder.versionForClassName("NSTimeZone") == 0 {
+                    self.init(name: name._swiftObject)
+                } else {
+                    let data = aDecoder.decodeObject() as? NSData
+                    self.init(name: name._swiftObject, data: data)
+                }
+            } else {
+                return nil
+            }
+        }
     }
     
+    public override var hash: Int {
+        return Int(bitPattern: CFHash(_cfObject))
+    }
+    
+    public override func isEqual(object: AnyObject?) -> Bool {
+        if let tz = object as? NSTimeZone {
+            return isEqualToTimeZone(tz)
+        } else {
+            return false
+        }
+    }
+    
+    public override var description: String {
+        return CFCopyDescription(_cfObject)._swiftObject
+    }
+
     deinit {
         _CFDeinit(self)
     }
@@ -51,11 +87,20 @@ public class NSTimeZone : NSObject, NSCopying, NSSecureCoding, NSCoding {
     public convenience init?(abbreviation: String) { NSUnimplemented() }
 
     public func encodeWithCoder(aCoder: NSCoder) {
-        
+        if aCoder.allowsKeyedCoding {
+            aCoder.encodeObject(self.name.bridge(), forKey:"NS.name")
+            // darwin versions of this method can and will encode mutable data, however it is not required for compatability
+            aCoder.encodeObject(self.data, forKey:"NS.data")
+        } else {
+        }
     }
     
     public static func supportsSecureCoding() -> Bool {
         return true
+    }
+    
+    public override func copy() -> AnyObject {
+        return copyWithZone(nil)
     }
     
     public func copyWithZone(zone: NSZone) -> AnyObject {
@@ -63,22 +108,18 @@ public class NSTimeZone : NSObject, NSCopying, NSSecureCoding, NSCoding {
     }
     
     public var name: String {
-        get {
-            if self.dynamicType === NSTimeZone.self {
-                return CFTimeZoneGetName(_cfObject)._swiftObject
-            } else {
-                NSRequiresConcreteImplementation()
-            }
+        if self.dynamicType === NSTimeZone.self {
+            return CFTimeZoneGetName(_cfObject)._swiftObject
+        } else {
+            NSRequiresConcreteImplementation()
         }
     }
     
     public var data: NSData {
-        get {
-            if self.dynamicType === NSTimeZone.self {
-                return CFTimeZoneGetData(_cfObject)._nsObject
-            } else {
-                NSRequiresConcreteImplementation()
-            }
+        if self.dynamicType === NSTimeZone.self {
+            return CFTimeZoneGetData(_cfObject)._nsObject
+        } else {
+            NSRequiresConcreteImplementation()
         }
     }
     
@@ -162,12 +203,22 @@ extension NSTimeZone {
     public class func timeZoneDataVersion() -> String { NSUnimplemented() }
     
     public var secondsFromGMT: Int { NSUnimplemented() }
-    public var abbreviation: String? { NSUnimplemented() }
+
+    /// The abbreviation for the receiver, such as "EDT" (Eastern Daylight Time). (read-only)
+    ///
+    /// This invokes `abbreviationForDate:` with the current date as the argument.
+    public var abbreviation: String? {
+        let currentDate = NSDate()
+        return abbreviationForDate(currentDate)
+    }
+
     public var daylightSavingTime: Bool { NSUnimplemented() }
     public var daylightSavingTimeOffset: NSTimeInterval { NSUnimplemented() }
     /*@NSCopying*/ public var nextDaylightSavingTimeTransition: NSDate?  { NSUnimplemented() }
     
-    public func isEqualToTimeZone(aTimeZone: NSTimeZone) -> Bool { NSUnimplemented() }
+    public func isEqualToTimeZone(aTimeZone: NSTimeZone) -> Bool {
+        return CFEqual(self._cfObject, aTimeZone._cfObject)
+    }
     
     public func localizedName(style: NSTimeZoneNameStyle, locale: NSLocale?) -> String? { NSUnimplemented() }
 }

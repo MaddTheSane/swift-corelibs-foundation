@@ -30,7 +30,7 @@
 #include <limits.h>
 #include <string.h>
 #include "CFInternal.h"
-#if DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_WINDOWS
+#if DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_WINDOWS || DEPLOYMENT_TARGET_LINUX
 #include <CoreFoundation/CFStream.h>
 #endif
 
@@ -125,9 +125,6 @@ CFTypeID _CFKeyedArchiverUIDGetTypeID(void) {
 CFKeyedArchiverUIDRef _CFKeyedArchiverUIDCreate(CFAllocatorRef allocator, uint32_t value) {
     CFKeyedArchiverUIDRef uid;
     uid = (CFKeyedArchiverUIDRef)_CFRuntimeCreateInstance(allocator, _CFKeyedArchiverUIDGetTypeID(), sizeof(struct __CFKeyedArchiverUID) - sizeof(CFRuntimeBase), NULL);
-    if (NULL == uid) {
-	return NULL;
-    }
     ((struct __CFKeyedArchiverUID *)uid)->_value = value;
     return uid;
 }
@@ -169,7 +166,7 @@ static void writeBytes(__CFBinaryPlistWriteBuffer *buf, const UInt8 *bytes, CFIn
         if (buf->stream && !dryRun) CFDataAppendBytes((CFMutableDataRef)buf->stream, bytes, length);
         buf->written += length;
     } else {
-#if (DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_WINDOWS) && !DEPLOYMENT_RUNTIME_SWIFT
+#if DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_WINDOWS || DEPLOYMENT_TARGET_LINUX
 	while (0 < length) {
 	    CFIndex ret = (buf->stream && !dryRun) ? CFWriteStreamWrite((CFWriteStreamRef)buf->stream, bytes, length) : length;
             if (ret == 0) {

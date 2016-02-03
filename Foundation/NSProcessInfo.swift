@@ -46,7 +46,7 @@ public class NSProcessInfo : NSObject {
     
     
     internal static var _environment: [String : String] = {
-        let dict = __CFGetEnvironment().takeUnretainedValue()._nsObject
+        let dict = __CFGetEnvironment()._nsObject
         var env = [String : String]()
         dict.enumerateKeysAndObjectsUsingBlock { key, value, stop in
             env[(key as! NSString)._swiftObject] = (value as! NSString)._swiftObject
@@ -63,68 +63,63 @@ public class NSProcessInfo : NSObject {
     }
     
     public var hostName: String {
-        get {
-            if let name = NSHost.currentHost().name {
-                return name
-            } else {
-                return "localhost"
-            }
+        if let name = NSHost.currentHost().name {
+            return name
+        } else {
+            return "localhost"
         }
     }
     
-    public var processName: String {
-        get {
-            NSUnimplemented()
-        }
-        set {
-            NSUnimplemented()
-        }
-    }
+    public var processName: String = _CFProcessNameString()._swiftObject
     
     public var processIdentifier: Int32 {
-        get {
-            return __CFGetPid()
-        }
+        return __CFGetPid()
     }
     
     public var globallyUniqueString: String {
-        get {
-            let uuid = CFUUIDCreate(kCFAllocatorSystemDefault)
-            return CFUUIDCreateString(kCFAllocatorSystemDefault, uuid)._swiftObject
-        }
+        let uuid = CFUUIDCreate(kCFAllocatorSystemDefault)
+        return CFUUIDCreateString(kCFAllocatorSystemDefault, uuid)._swiftObject
     }
 
     public var operatingSystemVersionString: String {
-        get {
-            return CFCopySystemVersionString().takeRetainedValue()._swiftObject
-        }
+        return CFCopySystemVersionString()?._swiftObject ?? "Unknown"
     }
     
     public var operatingSystemVersion: NSOperatingSystemVersion {
-        get {
-            NSUnimplemented()
+        // The following fallback values match Darwin Foundation
+        let fallbackMajor = -1
+        let fallbackMinor = 0
+        let fallbackPatch = 0
+        
+        guard let systemVersionDictionary = _CFCopySystemVersionDictionary() else {
+            return NSOperatingSystemVersion(majorVersion: fallbackMajor, minorVersion: fallbackMinor, patchVersion: fallbackPatch)
         }
+        
+        let productVersionKey = unsafeBitCast(_kCFSystemVersionProductVersionKey, UnsafePointer<Void>.self)
+        guard let productVersion = unsafeBitCast(CFDictionaryGetValue(systemVersionDictionary, productVersionKey), NSString!.self) else {
+            return NSOperatingSystemVersion(majorVersion: fallbackMajor, minorVersion: fallbackMinor, patchVersion: fallbackPatch)
+        }
+        
+        let versionComponents = productVersion._swiftObject.characters.split(".").flatMap(String.init).flatMap({ Int($0) })
+        let majorVersion = versionComponents.dropFirst(0).first ?? fallbackMajor
+        let minorVersion = versionComponents.dropFirst(1).first ?? fallbackMinor
+        let patchVersion = versionComponents.dropFirst(2).first ?? fallbackPatch
+        return NSOperatingSystemVersion(majorVersion: majorVersion, minorVersion: minorVersion, patchVersion: patchVersion)
     }
     
     internal let _processorCount = __CFProcessorCount()
     public var processorCount: Int {
-        get {
-            return Int(_processorCount)
-        }
+        return Int(_processorCount)
     }
     
     internal let _activeProcessorCount = __CFActiveProcessorCount()
     public var activeProcessorCount: Int {
-        get {
-            return Int(_activeProcessorCount)
-        }
+        return Int(_activeProcessorCount)
     }
     
     internal let _physicalMemory = __CFMemorySize()
     public var physicalMemory: UInt64 {
-        get {
-            return _physicalMemory
-        }
+        return _physicalMemory
     }
     
     public func isOperatingSystemAtLeastVersion(version: NSOperatingSystemVersion) -> Bool {
@@ -151,8 +146,6 @@ public class NSProcessInfo : NSObject {
     }
     
     public var systemUptime: NSTimeInterval {
-        get {
-            return CFGetSystemUptime()
-        }
+        return CFGetSystemUptime()
     }
 }

@@ -397,8 +397,10 @@ static CFStringEncoding __CFDefaultFileSystemEncoding = kCFStringEncodingInvalid
 CFStringEncoding __CFDefaultEightBitStringEncoding = kCFStringEncodingInvalidId;
 
 
-#if DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI || DEPLOYMENT_TARGET_LINUX
+#if DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI
 #define __defaultEncoding kCFStringEncodingMacRoman
+#elif DEPLOYMENT_TARGET_LINUX
+#define __defaultEncoding kCFStringEncodingUTF8
 #elif DEPLOYMENT_TARGET_WINDOWS
 #define __defaultEncoding kCFStringEncodingWindowsLatin1
 #else
@@ -1131,7 +1133,18 @@ CFHashCode CFStringHashNSString(CFStringRef str) {
     UniChar buffer[HashEverythingLimit];
     CFIndex bufLen;		// Number of characters in the buffer for hashing
     CFIndex len = 0;	// Actual length of the string
-    
+#if DEPLOYMENT_RUNTIME_SWIFT
+    len = CF_SWIFT_CALLV(str, NSString.length);
+    if (len <= HashEverythingLimit) {
+        (void)CF_SWIFT_CALLV(str, NSString.getCharacters, CFRangeMake(0, len), buffer);
+        bufLen = len;
+    } else {
+        (void)CF_SWIFT_CALLV(str, NSString.getCharacters, CFRangeMake(0, 32), buffer);
+        (void)CF_SWIFT_CALLV(str, NSString.getCharacters, CFRangeMake((len >> 1) - 16, 32), buffer+32);
+        (void)CF_SWIFT_CALLV(str, NSString.getCharacters, CFRangeMake(len - 32, 32), buffer+64);
+        bufLen = HashEverythingLimit;
+    }
+#else
     len = CF_OBJC_CALLV((NSString *)str, length);
     if (len <= HashEverythingLimit) {
         (void)CF_OBJC_CALLV((NSString *)str, getCharacters:buffer range:NSMakeRange(0, len));
@@ -1142,6 +1155,7 @@ CFHashCode CFStringHashNSString(CFStringRef str) {
         (void)CF_OBJC_CALLV((NSString *)str, getCharacters:buffer+64 range:NSMakeRange(len - 32, 32));
         bufLen = HashEverythingLimit;
     }
+#endif
     return __CFStrHashCharacters(buffer, bufLen, len);
 }
 
@@ -1196,9 +1210,7 @@ CFTypeID CFStringGetTypeID(void) {
 
 
 static Boolean CFStrIsUnicode(CFStringRef str) {
-    if (CF_IS_SWIFT(__kCFStringTypeID, str)) {
-        return false;
-    }
+    CF_SWIFT_FUNCDISPATCHV(__kCFStringTypeID, Boolean, str, NSString._encodingCantBeStoredInEightBitCFString);
     CF_OBJC_FUNCDISPATCHV(__kCFStringTypeID, Boolean, (NSString *)str, _encodingCantBeStoredInEightBitCFString);
     return __CFStrIsUnicode(str);
 }
@@ -2031,7 +2043,7 @@ int _CFStringCheckAndGetCharacters(CFStringRef str, CFRange range, UniChar *buff
 
 CFIndex CFStringGetBytes(CFStringRef str, CFRange range, CFStringEncoding encoding, uint8_t lossByte, Boolean isExternalRepresentation, uint8_t *buffer, CFIndex maxBufLen, CFIndex *usedBufLen) {
     if (CF_IS_SWIFT(CFStringGetTypeID(), str) && __CFSwiftBridge.NSString.__getBytes != NULL) {
-        return __CFSwiftBridge.NSString.__getBytes(str, range, buffer, maxBufLen, usedBufLen);
+        return __CFSwiftBridge.NSString.__getBytes(str, encoding, range, buffer, maxBufLen, usedBufLen);
     }
     __CFAssertIsNotNegative(maxBufLen);
     
@@ -2059,7 +2071,7 @@ CFIndex CFStringGetBytes(CFStringRef str, CFRange range, CFStringEncoding encodi
 
 ConstStringPtr CFStringGetPascalStringPtr (CFStringRef str, CFStringEncoding encoding) {
 
-    if (!CF_IS_OBJC(__kCFStringTypeID, str)) {	/* ??? Hope the compiler optimizes this away if OBJC_MAPPINGS is not on */
+    if (!CF_IS_OBJC(__kCFStringTypeID, str) && !CF_IS_SWIFT(__kCFStringTypeID, str)) {	/* ??? Hope the compiler optimizes this away if OBJC_MAPPINGS is not on */
         __CFAssertIsString(str);
         if (__CFStrHasLengthByte(str) && __CFStrIsEightBit(str) && ((__CFStringGetEightBitStringEncoding() == encoding) || (__CFStringGetEightBitStringEncoding() == kCFStringEncodingASCII && __CFStringEncodingIsSupersetOfASCII(encoding)))) {	// Requested encoding is equal to the encoding in string || the contents is in ASCII
 	    const uint8_t *contents = (const uint8_t *)__CFStrContents(str);
@@ -2124,7 +2136,7 @@ Boolean CFStringGetPascalString(CFStringRef str, Str255 buffer, CFIndex bufferSi
     __CFAssertIsNotNegative(bufferSize);
     if (bufferSize < 1) return false;
 
-    if (CF_IS_OBJC(__kCFStringTypeID, str)) {	/* ??? Hope the compiler optimizes this away if OBJC_MAPPINGS is not on */
+    if (CF_IS_OBJC(__kCFStringTypeID, str) || CF_IS_SWIFT(__kCFStringTypeID, str)) {	/* ??? Hope the compiler optimizes this away if OBJC_MAPPINGS is not on */
 	length = CFStringGetLength(str);
         if (!__CFCanUseLengthByte(length)) return false; // Can't fit into pstring
     } else {
@@ -3683,7 +3695,7 @@ CFRange CFStringGetRangeOfCharacterClusterAtIndex(CFStringRef string, CFIndex ch
 
     /* Fast case.  If we're eight-bit, it's either the default encoding is cheap or the content is all ASCII.  Watch out when (or if) adding more 8bit Mac-scripts in CFStringEncodingConverters
     */
-    if (!CF_IS_OBJC(__kCFStringTypeID, string) && __CFStrIsEightBit(string)) return CFRangeMake(charIndex, 1);
+    if (!CF_IS_OBJC(__kCFStringTypeID, string)  && !CF_IS_SWIFT(__kCFStringTypeID, string) && __CFStrIsEightBit(string)) return CFRangeMake(charIndex, 1);
 
     bmpBitmap = CFUniCharGetBitmapPtrForPlane(csetType, 0);
     letterBMP = CFUniCharGetBitmapPtrForPlane(kCFUniCharLetterCharacterSet, 0);
@@ -4071,7 +4083,7 @@ CFStringRef CFStringCreateByCombiningStrings(CFAllocatorRef alloc, CFArrayRef ar
     CFIndex numChars;
     CFIndex separatorNumByte;
     CFIndex stringCount = CFArrayGetCount(array);
-    Boolean isSepCFString = !CF_IS_OBJC(__kCFStringTypeID, separatorString); 
+    Boolean isSepCFString = !CF_IS_OBJC(__kCFStringTypeID, separatorString) && !CF_IS_SWIFT(__kCFStringTypeID, separatorString);
     Boolean canBeEightbit = isSepCFString && __CFStrIsEightBit(separatorString);
     CFIndex idx;
     CFStringRef otherString;
@@ -4092,7 +4104,7 @@ CFStringRef CFStringCreateByCombiningStrings(CFAllocatorRef alloc, CFArrayRef ar
         otherString = (CFStringRef)CFArrayGetValueAtIndex(array, idx);
         numChars += CFStringGetLength(otherString);
 	// canBeEightbit is already false if the separator is an NSString...
-        if (CF_IS_OBJC(__kCFStringTypeID, otherString) || ! __CFStrIsEightBit(otherString)) canBeEightbit = false;
+        if (CF_IS_OBJC(__kCFStringTypeID, otherString) || CF_IS_SWIFT(__kCFStringTypeID, otherString) || ! __CFStrIsEightBit(otherString)) canBeEightbit = false;
     }
 
     buffer = (uint8_t *)CFAllocatorAllocate(alloc, canBeEightbit ? ((numChars + 1) * sizeof(uint8_t)) : (numChars * sizeof(UniChar)), 0);
@@ -4107,7 +4119,7 @@ CFStringRef CFStringCreateByCombiningStrings(CFAllocatorRef alloc, CFArrayRef ar
             } else {
                 if (!isSepCFString) { // NSString
                     CFStringGetCharacters(separatorString, CFRangeMake(0, CFStringGetLength(separatorString)), (UniChar *)bufPtr);
-                } else if (canBeEightbit) {
+                } else if (canBeEightbit || __CFStrIsUnicode(separatorString)) {
                     memmove(bufPtr, (const uint8_t *)__CFStrContents(separatorString) + __CFStrSkipAnyLengthByte(separatorString), separatorNumByte);
                 } else {	
                     __CFStrConvertBytesToUnicode((uint8_t *)__CFStrContents(separatorString) + __CFStrSkipAnyLengthByte(separatorString), (UniChar *)bufPtr, __CFStrLength(separatorString));
@@ -4118,7 +4130,7 @@ CFStringRef CFStringCreateByCombiningStrings(CFAllocatorRef alloc, CFArrayRef ar
         }
 
         otherString = (CFStringRef )CFArrayGetValueAtIndex(array, idx);
-        if (CF_IS_OBJC(__kCFStringTypeID, otherString)) {
+        if (CF_IS_OBJC(__kCFStringTypeID, otherString) || CF_IS_SWIFT(__kCFStringTypeID, otherString)) {
             CFIndex otherLength = CFStringGetLength(otherString);
             CFStringGetCharacters(otherString, CFRangeMake(0, otherLength), (UniChar *)bufPtr);
             bufPtr += otherLength * sizeof(UniChar);
@@ -4187,7 +4199,7 @@ CFDataRef CFStringCreateExternalRepresentation(CFAllocatorRef alloc, CFStringRef
     CFIndex usedLength;
     SInt32 result;
 
-    if (CF_IS_OBJC(__kCFStringTypeID, string)) {	/* ??? Hope the compiler optimizes this away if OBJC_MAPPINGS is not on */
+    if (CF_IS_OBJC(__kCFStringTypeID, string) || CF_IS_SWIFT(__kCFStringTypeID, string)) {	/* ??? Hope the compiler optimizes this away if OBJC_MAPPINGS is not on */
 	length = CFStringGetLength(string);
     } else {
         __CFAssertIsString(string);
@@ -4201,7 +4213,7 @@ CFDataRef CFStringCreateExternalRepresentation(CFAllocatorRef alloc, CFStringRef
 
     if (((encoding & 0x0FFF) == kCFStringEncodingUnicode) && ((encoding == kCFStringEncodingUnicode) || ((encoding > kCFStringEncodingUTF8) && (encoding <= kCFStringEncodingUTF32LE)))) {
         guessedByteLength = (length + 1) * ((((encoding >> 26)  & 2) == 0) ? sizeof(UTF16Char) : sizeof(UTF32Char)); // UTF32 format has the bit set
-    } else if (((guessedByteLength = CFStringGetMaximumSizeForEncoding(length, encoding)) > length) && !CF_IS_OBJC(__kCFStringTypeID, string)) { // Multi byte encoding
+    } else if (((guessedByteLength = CFStringGetMaximumSizeForEncoding(length, encoding)) > length) && !CF_IS_OBJC(__kCFStringTypeID, string) && !CF_IS_SWIFT(__kCFStringTypeID, string)) { // Multi byte encoding
 #if DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED || DEPLOYMENT_TARGET_EMBEDDED_MINI || DEPLOYMENT_TARGET_LINUX || DEPLOYMENT_TARGET_FREEBSD
         if (__CFStrIsUnicode(string)) {
             CFIndex aLength = CFStringEncodingByteLengthForCharacters(encoding, kCFStringEncodingPrependBOM, __CFStrContents(string), __CFStrLength(string));
@@ -4568,7 +4580,7 @@ void CFStringPad(CFMutableStringRef string, CFStringRef padString, CFIndex lengt
         CFIndex padLength;
         CFIndex padRemaining = length - originalLength;
         
-        if (CF_IS_OBJC(__kCFStringTypeID, padString)) {	/* ??? Hope the compiler optimizes this away if OBJC_MAPPINGS is not on */
+        if (CF_IS_OBJC(__kCFStringTypeID, padString) || CF_IS_SWIFT(__kCFStringTypeID, padString)) {	/* ??? Hope the compiler optimizes this away if OBJC_MAPPINGS is not on */
             padStringLength = CFStringGetLength(padString);
             isUnicode = true;	/* !!! Bad for now */
         } else {
@@ -5307,7 +5319,7 @@ void CFStringFold(CFMutableStringRef theString, CFStringCompareFlags theFlags, C
     const uint8_t *langCode;
     CFStringEncoding eightBitEncoding;
     bool caseInsensitive = ((theFlags & kCFCompareCaseInsensitive) ? true : false);
-    bool isObjc = CF_IS_OBJC(__kCFStringTypeID, theString);
+    bool isObjcOrSwift = CF_IS_OBJC(__kCFStringTypeID, theString) || CF_IS_SWIFT(__kCFStringTypeID, theString);
     CFLocaleRef theLocale = locale;
 
     if ((theFlags & kCFCompareLocalized) && (NULL == locale)) {
@@ -5330,7 +5342,7 @@ void CFStringFold(CFMutableStringRef theString, CFStringCompareFlags theFlags, C
     if ((NULL != cString) && (theFlags & (kCFCompareCaseInsensitive|kCFCompareDiacriticInsensitive))) {
         const uint8_t *cStringPtr = cString;
         const uint8_t *cStringLimit = cString + length;
-        uint8_t *cStringContents = (isObjc ? NULL : (uint8_t *)__CFStrContents(theString) + __CFStrSkipAnyLengthByte(theString));
+        uint8_t *cStringContents = (isObjcOrSwift ? NULL : (uint8_t *)__CFStrContents(theString) + __CFStrSkipAnyLengthByte(theString));
         
         while (cStringPtr < cStringLimit) {
             if ((*cStringPtr < 0x80) && (NULL == langCode)) {
@@ -5356,7 +5368,7 @@ void CFStringFold(CFMutableStringRef theString, CFStringCompareFlags theFlags, C
     if (currentIndex < length) {
         UTF16Char *contents;
 
-        if (isObjc) {
+        if (isObjcOrSwift) {
             CFMutableStringRef cfString;
             CFRange range = CFRangeMake(currentIndex, length - currentIndex);
 
@@ -6031,7 +6043,7 @@ static void __CFStringAppendFormatCore(CFMutableStringRef outputString, CFString
 
 
     formatLen = CFStringGetLength(formatString);
-    if (!CF_IS_OBJC(__kCFStringTypeID, formatString)) {
+    if (!CF_IS_OBJC(__kCFStringTypeID, formatString) && !CF_IS_SWIFT(CFStringGetTypeID(), formatString)) {
         __CFAssertIsString(formatString);
         if (!__CFStrIsUnicode(formatString)) {
             cformat = (const uint8_t *)__CFStrContents(formatString);
@@ -6597,7 +6609,7 @@ void CFShowStr(CFStringRef str) {
 	return;
     }
 
-    if (CF_IS_OBJC(__kCFStringTypeID, str)) {
+    if (CF_IS_OBJC(__kCFStringTypeID, str) || CF_IS_SWIFT(__kCFStringTypeID, str)) {
         fprintf(stdout, "This is an NSString, not CFString\n");
         return;
     }

@@ -25,9 +25,7 @@ internal final class _NSCFArray : NSMutableArray {
     }
     
     override var count: Int {
-        get {
-            return CFArrayGetCount(_cfObject)
-        }
+        return CFArrayGetCount(_cfObject)
     }
     
     override func objectAtIndex(index: Int) -> AnyObject {
@@ -42,6 +40,10 @@ internal final class _NSCFArray : NSMutableArray {
     override func removeObjectAtIndex(index: Int) {
         CFArrayRemoveValueAtIndex(_cfMutableObject, index)
     }
+    
+    override var classForCoder: AnyClass {
+        return NSMutableArray.self
+    }
 }
 
 internal func _CFSwiftArrayGetCount(array: AnyObject) -> CFIndex {
@@ -53,7 +55,7 @@ internal func _CFSwiftArrayGetValueAtIndex(array: AnyObject, _ index: CFIndex) -
 }
 
 internal func _CFSwiftArrayGetValues(array: AnyObject, _ range: CFRange, _ values: UnsafeMutablePointer<Unmanaged<AnyObject>?>) {
-    for var idx = 0; idx < range.length; idx++ {
+    for idx in 0..<range.length {
         let obj = (array as! NSArray).objectAtIndex(idx + range.location)
         values[idx] = Unmanaged.passUnretained(obj)
     }

@@ -29,6 +29,7 @@ extern "C" {
 #endif
 
 #if DEPLOYMENT_TARGET_IPHONESIMULATOR // work around <rdar://problem/16507706>
+#include <pthread.h>
 #include <pthread/qos.h>
 #define qos_class_self() (QOS_CLASS_UTILITY)
 #define qos_class_main() (QOS_CLASS_UTILITY)
@@ -36,6 +37,7 @@ extern "C" {
 #define pthread_override_qos_class_start_np(A, B, C) (NULL)
 #define pthread_override_qos_class_end_np(A) do {} while (0)
 #elif (DEPLOYMENT_TARGET_MACOSX || DEPLOYMENT_TARGET_EMBEDDED)
+#include <pthread.h>
 #include <pthread/qos.h>
 #endif
 
@@ -155,6 +157,11 @@ typedef int		boolean_t;
 #endif
 #endif
 
+#if DEPLOYMENT_TARGET_FREEBSD
+#include <string.h>
+#include <sys/stat.h> // mode_t
+#endif
+
 #if DEPLOYMENT_TARGET_LINUX
     
 #define CF_PRIVATE __attribute__((visibility("hidden")))
@@ -220,6 +227,39 @@ void OSMemoryBarrier();
 CF_INLINE size_t malloc_size(void *memblock) {
     return malloc_usable_size(memblock);
 }
+
+#include <time.h>
+CF_INLINE uint64_t mach_absolute_time() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_nsec + (uint64_t)ts.tv_sec * 1000000000UL;
+}
+
+#endif
+
+#if DEPLOYMENT_TARGET_FREEBSD
+#define HAVE_STRUCT_TIMESPEC 1
+
+#define CF_PRIVATE __attribute__((visibility("hidden")))
+#define __strong
+#define __weak
+
+// Implemented in CFPlatform.c
+bool OSAtomicCompareAndSwapPtr(void *oldp, void *newp, void *volatile *dst);
+bool OSAtomicCompareAndSwapLong(long oldl, long newl, long volatile *dst);
+bool OSAtomicCompareAndSwapPtrBarrier(void *oldp, void *newp, void *volatile *dst);
+bool OSAtomicCompareAndSwap64Barrier( int64_t __oldValue, int64_t __newValue, volatile int64_t *__theValue );
+
+int32_t OSAtomicDecrement32Barrier(volatile int32_t *dst);
+int32_t OSAtomicIncrement32Barrier(volatile int32_t *dst);
+int32_t OSAtomicIncrement32(volatile int32_t *theValue);
+int32_t OSAtomicDecrement32(volatile int32_t *theValue);
+
+int32_t OSAtomicAdd32( int32_t theAmount, volatile int32_t *theValue );
+int32_t OSAtomicAdd32Barrier( int32_t theAmount, volatile int32_t *theValue );
+bool OSAtomicCompareAndSwap32Barrier( int32_t oldValue, int32_t newValue, volatile int32_t *theValue );
+
+void OSMemoryBarrier();
 
 #endif
 

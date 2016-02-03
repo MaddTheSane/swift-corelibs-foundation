@@ -49,17 +49,35 @@ public class NSURL : NSObject, NSSecureCoding, NSCopying {
     
     
     internal var _cfObject : CFType {
-        get {
-            if self.dynamicType === NSURL.self {
-                return unsafeBitCast(self, CFType.self)
-            } else {
-                return CFURLCreateWithString(kCFAllocatorSystemDefault, relativeString._cfObject, self.baseURL?._cfObject)
-            }
+        if self.dynamicType === NSURL.self {
+            return unsafeBitCast(self, CFType.self)
+        } else {
+            return CFURLCreateWithString(kCFAllocatorSystemDefault, relativeString._cfObject, self.baseURL?._cfObject)
         }
     }
     
+    public override var hash: Int {
+        return Int(bitPattern: CFHash(_cfObject))
+    }
+    
+    public override func isEqual(object: AnyObject?) -> Bool {
+        if let url = object as? NSURL {
+            return CFEqual(_cfObject, url._cfObject)
+        } else {
+            return false
+        }
+    }
+    
+    public override var description: String {
+        return CFCopyDescription(_cfObject)._swiftObject
+    }
+
     deinit {
         _CFDeinit(self)
+    }
+    
+    public override func copy() -> AnyObject {
+        return copyWithZone(nil)
     }
     
     public func copyWithZone(zone: NSZone) -> AnyObject {
@@ -70,12 +88,28 @@ public class NSURL : NSObject, NSSecureCoding, NSCopying {
         return true
     }
     
-    public required init?(coder aDecoder: NSCoder) {
-        NSUnimplemented()
+    public convenience required init?(coder aDecoder: NSCoder) {
+        if aDecoder.allowsKeyedCoding {
+            let base = aDecoder.decodeObjectOfClass(NSURL.self, forKey:"NS.base")
+            let relative = aDecoder.decodeObjectOfClass(NSString.self, forKey:"NS.relative")
+
+            if relative == nil {
+                return nil
+            }
+            
+            self.init(string: relative!.bridge(), relativeToURL: base)
+        } else {
+            NSUnimplemented()
+        }
     }
     
     public func encodeWithCoder(aCoder: NSCoder) {
-        NSUnimplemented()
+	if aCoder.allowsKeyedCoding {
+            aCoder.encodeObject(self.baseURL, forKey:"NS.base")
+            aCoder.encodeObject(self.relativeString.bridge(), forKey:"NS.relative")
+	} else {
+            NSUnimplemented()
+        }
     }
     
     internal init(fileURLWithPath path: String, isDirectory isDir: Bool, relativeToURL baseURL: NSURL?) {
@@ -96,7 +130,13 @@ public class NSURL : NSObject, NSSecureCoding, NSCopying {
         if thePath.hasSuffix("/") {
             isDir = true
         } else {
-            NSFileManager.defaultManager().fileExistsAtPath(path, isDirectory: &isDir)
+            let absolutePath: String
+            if let absPath = baseURL?.URLByAppendingPathComponent(path)?.path {
+                absolutePath = absPath
+            } else {
+                absolutePath = path
+            }
+            NSFileManager.defaultManager().fileExistsAtPath(absolutePath, isDirectory: &isDir)
         }
 
         self.init(fileURLWithPath: thePath, isDirectory: isDir, relativeToURL: baseURL)
@@ -119,9 +159,9 @@ public class NSURL : NSObject, NSSecureCoding, NSCopying {
         self.init(fileURLWithPath: thePath, isDirectory: isDir, relativeToURL: nil)
     }
     
-    public init(fileURLWithFileSystemRepresentation path: UnsafePointer<Int8>, isDirectory isDir: Bool, relativeToURL baseURL: NSURL?) {
-        // TODO: Not sure if this one is required
-        NSUnimplemented()
+    public convenience init(fileURLWithFileSystemRepresentation path: UnsafePointer<Int8>, isDirectory isDir: Bool, relativeToURL baseURL: NSURL?) {
+        let pathString = String.fromCString(path)!
+        self.init(fileURLWithPath: pathString, isDirectory: isDir, relativeToURL: baseURL)
     }
     
     public convenience init?(string URLString: String) {
@@ -223,9 +263,12 @@ public class NSURL : NSObject, NSSecureCoding, NSCopying {
             let theRest = CFURLCopyResourceSpecifier(cf)?._swiftObject
             
             if let netLoc = netLoc {
-                return "//\(netLoc)\(path ?? "")\(theRest ?? "")"
+                let p = path ?? ""
+                let rest = theRest ?? ""
+                return "//\(netLoc)\(p)\(rest)"
             } else if let path = path {
-                return "\(path)\(theRest ?? "")"
+                let rest = theRest ?? ""
+                return "\(path)\(rest)"
             } else {
                 return theRest
             }
@@ -311,8 +354,22 @@ public class NSURL : NSObject, NSSecureCoding, NSCopying {
     
     /* Returns the URL's path in file system representation. File system representation is a null-terminated C string with canonical UTF-8 encoding. The returned C string will be automatically freed just as a returned object would be released; your code should copy the representation or use getFileSystemRepresentation:maxLength: if it needs to store the representation outside of the autorelease context in which the representation is created.
     */
+    
+    // Memory leak. See https://github.com/apple/swift-corelibs-foundation/blob/master/Docs/Issues.md
     public var fileSystemRepresentation: UnsafePointer<Int8> {
-        NSUnimplemented()
+        
+        let bufSize = Int(PATH_MAX + 1)
+        
+        let _fsrBuffer = UnsafeMutablePointer<Int8>.alloc(bufSize)
+        for i in 0..<bufSize {
+            _fsrBuffer.advancedBy(i).initialize(0)
+        }
+        
+        if getFileSystemRepresentation(_fsrBuffer, maxLength: bufSize) {
+            return UnsafePointer(_fsrBuffer)
+        }
+
+        return nil
     }
     
     // Whether the scheme is file:; if [myURL isFileURL] is YES, then [myURL path] is suitable for input into NSFileManager or NSPathUtilities.
@@ -339,7 +396,7 @@ public class NSURL : NSObject, NSSecureCoding, NSCopying {
         NSUnimplemented()
     }
     
-    override internal var _cfTypeID: CFTypeID {
+    override public var _cfTypeID: CFTypeID {
         return CFURLGetTypeID()
     }
 }
@@ -397,7 +454,7 @@ extension NSURL {
     /* The following methods work on the path portion of a URL in the same manner that the NSPathUtilities methods on NSString do.
     */
     public class func fileURLWithPathComponents(components: [String]) -> NSURL? {
-        let path = String.pathWithComponents(components)
+        let path = NSString.pathWithComponents(components)
         if components.last == "/" {
             return NSURL(fileURLWithPath: path, isDirectory: true)
         } else {
@@ -450,11 +507,68 @@ extension NSURL {
     /* The following methods work only on `file:` scheme URLs; for non-`file:` scheme URLs, these methods return the URL unchanged.
     */
     public var URLByStandardizingPath: NSURL? {
-        NSUnimplemented()
+        // Documentation says it should expand initial tilde, but it does't do this on OS X.
+        // In remaining cases it works just like URLByResolvingSymlinksInPath.
+        return URLByResolvingSymlinksInPath
     }
     
     public var URLByResolvingSymlinksInPath: NSURL? {
-        NSUnimplemented()
+        return _resolveSymlinksInPath(excludeSystemDirs: true)
+    }
+    
+    internal func _resolveSymlinksInPath(excludeSystemDirs excludeSystemDirs: Bool) -> NSURL? {
+        guard fileURL else {
+            return NSURL(string: absoluteString!)
+        }
+        
+        guard let selfPath = path else {
+            return NSURL(string: absoluteString!)
+        }
+        
+        let absolutePath: String
+        if selfPath.hasPrefix("/") {
+            absolutePath = selfPath
+        } else {
+            let workingDir = NSFileManager.defaultManager().currentDirectoryPath
+            absolutePath = workingDir.bridge().stringByAppendingPathComponent(selfPath)
+        }
+        
+        var components = absolutePath.pathComponents
+        guard !components.isEmpty else {
+            return NSURL(string: absoluteString!)
+        }
+        
+        var resolvedPath = components.removeFirst()
+        for component in components {
+            switch component {
+                
+            case "", ".":
+                break
+                
+            case "..":
+                resolvedPath = resolvedPath.bridge().stringByDeletingLastPathComponent
+                
+            default:
+                resolvedPath = resolvedPath.bridge().stringByAppendingPathComponent(component)
+                if let destination = NSFileManager.defaultManager()._tryToResolveTrailingSymlinkInPath(resolvedPath) {
+                    resolvedPath = destination
+                }
+            }
+        }
+        
+        // It might be a responsibility of NSURL(fileURLWithPath:). Check it.
+        var isExistingDirectory = false
+        NSFileManager.defaultManager().fileExistsAtPath(resolvedPath, isDirectory: &isExistingDirectory)
+        
+        if excludeSystemDirs {
+            resolvedPath = resolvedPath._tryToRemovePathPrefix("/private") ?? resolvedPath
+        }
+        
+        if isExistingDirectory && !resolvedPath.hasSuffix("/") {
+            resolvedPath += "/"
+        }
+        
+        return NSURL(fileURLWithPath: resolvedPath)
     }
 }
 
@@ -463,6 +577,10 @@ public class NSURLQueryItem : NSObject, NSSecureCoding, NSCopying {
     public init(name: String, value: String?) {
         self.name = name
         self.value = value
+    }
+    
+    public override func copy() -> AnyObject {
+        return copyWithZone(nil)
     }
     
     public func copyWithZone(zone: NSZone) -> AnyObject {
@@ -487,6 +605,10 @@ public class NSURLQueryItem : NSObject, NSSecureCoding, NSCopying {
 
 public class NSURLComponents : NSObject, NSCopying {
     private let _components : CFURLComponentsRef!
+    
+    public override func copy() -> AnyObject {
+        return copyWithZone(nil)
+    }
     
     public func copyWithZone(zone: NSZone) -> AnyObject {
         NSUnimplemented()
@@ -516,11 +638,8 @@ public class NSURLComponents : NSObject, NSCopying {
     
     // Returns a URL created from the NSURLComponents. If the NSURLComponents has an authority component (user, password, host or port) and a path component, then the path must either begin with "/" or be an empty string. If the NSURLComponents does not have an authority component (user, password, host or port) and has a path component, the path component must not start with "//". If those requirements are not met, nil is returned.
     public var URL: NSURL? {
-        if let result = _CFURLComponentsCopyURL(_components) {
-            return unsafeBitCast(result, NSURL.self)
-        } else {
-            return nil
-        }
+        guard let result = _CFURLComponentsCopyURL(_components) else { return nil }
+        return unsafeBitCast(result, NSURL.self)
     }
     
     // Returns a URL created from the NSURLComponents relative to a base URL. If the NSURLComponents has an authority component (user, password, host or port) and a path component, then the path must either begin with "/" or be an empty string. If the NSURLComponents does not have an authority component (user, password, host or port) and has a path component, the path component must not start with "//". If those requirements are not met, nil is returned.
@@ -530,7 +649,7 @@ public class NSURLComponents : NSObject, NSCopying {
     
     // Returns a URL string created from the NSURLComponents. If the NSURLComponents has an authority component (user, password, host or port) and a path component, then the path must either begin with "/" or be an empty string. If the NSURLComponents does not have an authority component (user, password, host or port) and has a path component, the path component must not start with "//". If those requirements are not met, nil is returned.
     public var string: String?  {
-        NSUnimplemented()
+        return _CFURLComponentsCopyString(_components)?._swiftObject
     }
     
     // Warning: IETF STD 66 (rfc3986) says the use of the format "user:password" in the userinfo subcomponent of a URI is deprecated because passing authentication information in clear text has proven to be a security risk. However, there are cases where this practice is still needed, and so the user and password components and methods are provided.
@@ -701,40 +820,36 @@ public class NSURLComponents : NSObject, NSCopying {
     
     /* These properties return the character range of a component in the URL string returned by -[NSURLComponents string]. If the component does not exist in the NSURLComponents object, {NSNotFound, 0} is returned. Note: Zero length components are legal. For example, the URL string "scheme://:@/?#" has a zero length user, password, host, query and fragment; the URL strings "scheme:" and "" both have a zero length path.
     */
-    private final func _convertRange(r : CFRange) -> NSRange {
-        return NSMakeRange(r.location == kCFNotFound ? NSNotFound : r.location, r.length)
-    }
-    
     public var rangeOfScheme: NSRange {
-        return _convertRange(_CFURLComponentsGetRangeOfScheme(_components))
+        return NSRange(_CFURLComponentsGetRangeOfScheme(_components))
     }
     
     public var rangeOfUser: NSRange {
-        return _convertRange(_CFURLComponentsGetRangeOfUser(_components))
+        return NSRange(_CFURLComponentsGetRangeOfUser(_components))
     }
     
     public var rangeOfPassword: NSRange {
-        return _convertRange(_CFURLComponentsGetRangeOfPassword(_components))
+        return NSRange(_CFURLComponentsGetRangeOfPassword(_components))
     }
     
     public var rangeOfHost: NSRange {
-        return _convertRange(_CFURLComponentsGetRangeOfHost(_components))
+        return NSRange(_CFURLComponentsGetRangeOfHost(_components))
     }
     
     public var rangeOfPort: NSRange {
-        return _convertRange(_CFURLComponentsGetRangeOfPort(_components))
+        return NSRange(_CFURLComponentsGetRangeOfPort(_components))
     }
     
     public var rangeOfPath: NSRange {
-        return _convertRange(_CFURLComponentsGetRangeOfPath(_components))
+        return NSRange(_CFURLComponentsGetRangeOfPath(_components))
     }
     
     public var rangeOfQuery: NSRange {
-        return _convertRange(_CFURLComponentsGetRangeOfQuery(_components))
+        return NSRange(_CFURLComponentsGetRangeOfQuery(_components))
     }
     
     public var rangeOfFragment: NSRange {
-        return _convertRange(_CFURLComponentsGetRangeOfFragment(_components))
+        return NSRange(_CFURLComponentsGetRangeOfFragment(_components))
     }
     
     // The getter method that underlies the queryItems property parses the query string based on these delimiters and returns an NSArray containing any number of NSURLQueryItem objects, each of which represents a single key-value pair, in the order in which they appear in the original query string.  Note that a name may appear more than once in a single query string, so the name values are not guaranteed to be unique. If the NSURLComponents object has an empty query component, queryItems returns an empty NSArray. If the NSURLComponents object has no query component, queryItems returns nil.

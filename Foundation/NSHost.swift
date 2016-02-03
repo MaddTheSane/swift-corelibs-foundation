@@ -84,9 +84,11 @@ public class NSHost : NSObject {
             if r != 0 {
                 return
             }
-            for var res: UnsafeMutablePointer<addrinfo> = res0; res != nil; res = res.memory.ai_next {
+            var res: UnsafeMutablePointer<addrinfo> = res0
+            while res != nil {
                 let family = res.memory.ai_family
                 if family != AF_INET && family != AF_INET6 {
+                    res = res.memory.ai_next
                     continue
                 }
                 let sa_len: socklen_t = socklen_t((family == AF_INET6) ? sizeof(sockaddr_in6) : sizeof(sockaddr_in))
@@ -101,6 +103,7 @@ public class NSHost : NSObject {
                 lookupInfo(&_addresses, NI_NUMERICHOST)
                 lookupInfo(&_names, NI_NAMEREQD)
                 lookupInfo(&_names, NI_NOFQDN|NI_NAMEREQD)
+                res = res.memory.ai_next
             }
             
             freeaddrinfo(res0)
@@ -109,35 +112,25 @@ public class NSHost : NSObject {
     }
     
     public var name: String? {
-        get {
-            return names.first
-        }
+        return names.first
     }
     
     public var names: [String] {
-        get {
-            _resolve()
-            return _names
-        }
+        _resolve()
+        return _names
     }
     
     public var address: String? {
-        get {
-            return addresses.first
-        }
+        return addresses.first
     }
     
     public var addresses: [String] {
-        get {
-            _resolve()
-            return _addresses
-        }
+        _resolve()
+        return _addresses
     }
     
     public var localizedName: String? {
-        get {
-            return nil
-        }
+        return nil
     }
 }
 

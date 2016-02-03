@@ -30,6 +30,10 @@ internal class _NSCFString : NSMutableString {
     required init(capacity: Int) {
         fatalError()
     }
+
+    required init(string aString: String) {
+        fatalError()
+    }
     
     deinit {
         _CFDeinit(self)
@@ -47,21 +51,21 @@ internal class _NSCFString : NSMutableString {
     override func replaceCharactersInRange(range: NSRange, withString aString: String) {
         CFStringReplace(unsafeBitCast(self, CFMutableStringRef.self), CFRangeMake(range.location, range.length), aString._cfObject)
     }
+    
+    override var classForCoder: AnyClass {
+        return NSMutableString.self
+    }
 }
 
 internal final class _NSCFConstantString : _NSCFString {
     internal var _ptr : UnsafePointer<UInt8> {
-        get {
-            let ptr = unsafeAddressOf(self) + sizeof(COpaquePointer) + sizeof(Int32) + sizeof(Int32) + sizeof(_CFInfo)
-            return UnsafePointer<UnsafePointer<UInt8>>(ptr).memory
-        }
+        let ptr = unsafeAddressOf(self) + sizeof(COpaquePointer) + sizeof(Int32) + sizeof(Int32) + sizeof(_CFInfo)
+        return UnsafePointer<UnsafePointer<UInt8>>(ptr).memory
     }
     internal var _length : UInt32 {
-        get {
-            let offset = sizeof(COpaquePointer) + sizeof(Int32) + sizeof(Int32) + sizeof(_CFInfo) + sizeof(UnsafePointer<UInt8>)
-            let ptr = unsafeAddressOf(self) + offset
-            return UnsafePointer<UInt32>(ptr).memory
-        }
+        let offset = sizeof(COpaquePointer) + sizeof(Int32) + sizeof(Int32) + sizeof(_CFInfo) + sizeof(UnsafePointer<UInt8>)
+        let ptr = unsafeAddressOf(self) + offset
+        return UnsafePointer<UInt32>(ptr).memory
     }
     
     required init(characters: UnsafePointer<unichar>, length: Int) {
@@ -83,6 +87,10 @@ internal final class _NSCFConstantString : _NSCFString {
     required init(capacity: Int) {
         fatalError()
     }
+
+    required init(string aString: String) {
+        fatalError("Constant strings cannot be constructed in code")
+    }
     
     deinit {
         fatalError("Constant strings cannot be deallocated")
@@ -99,6 +107,10 @@ internal final class _NSCFConstantString : _NSCFString {
     override func replaceCharactersInRange(range: NSRange, withString aString: String) {
         fatalError()
     }
+    
+    override var classForCoder: AnyClass {
+        return NSString.self
+    }
 }
 
 internal func _CFSwiftStringGetLength(string: AnyObject) -> CFIndex {
@@ -113,18 +125,45 @@ internal func _CFSwiftStringGetCharacters(str: AnyObject, range: CFRange, buffer
     (str as! NSString).getCharacters(buffer, range: NSMakeRange(range.location, range.length))
 }
 
-internal func _CFSwiftStringGetBytes(str: AnyObject, range: CFRange, buffer: UnsafeMutablePointer<UInt8>, maxBufLen: CFIndex, usedBufLen: UnsafeMutablePointer<CFIndex>) -> CFIndex {
-    let s = (str as! NSString)._swiftObject.utf8
-    let start = s.startIndex
-    if buffer != nil {
-        for var idx = 0; idx < range.length; idx++ {
-            let c = s[start.advancedBy(idx + range.location)]
-            buffer.advancedBy(idx).initialize(c)
+internal func _CFSwiftStringGetBytes(str: AnyObject, encoding: CFStringEncoding, range: CFRange, buffer: UnsafeMutablePointer<UInt8>, maxBufLen: CFIndex, usedBufLen: UnsafeMutablePointer<CFIndex>) -> CFIndex {
+    switch encoding {
+        // TODO: Don't treat many encodings like they are UTF8
+    case CFStringEncoding(kCFStringEncodingUTF8), CFStringEncoding(kCFStringEncodingISOLatin1), CFStringEncoding(kCFStringEncodingMacRoman), CFStringEncoding(kCFStringEncodingASCII), CFStringEncoding(kCFStringEncodingNonLossyASCII):
+        let encodingView = (str as! NSString)._swiftObject.utf8
+        let start = encodingView.startIndex
+        if buffer != nil {
+            for idx in 0..<range.length {
+                let character = encodingView[start.advancedBy(idx + range.location)]
+                buffer.advancedBy(idx).initialize(character)
+            }
         }
+        if usedBufLen != nil {
+            usedBufLen.memory = range.length
+        }
+        
+    case CFStringEncoding(kCFStringEncodingUTF16):
+        let encodingView = (str as! NSString)._swiftObject.utf16
+        let start = encodingView.startIndex
+        if buffer != nil {
+            for idx in 0..<range.length {
+                // Since character is 2 bytes but the buffer is in term of 1 byte values, we have to split it up
+                let character = encodingView[start.advancedBy(idx + range.location)]
+                let byte0 = UInt8(character & 0x00ff)
+                let byte1 = UInt8((character >> 8) & 0x00ff)
+                buffer.advancedBy(idx * 2).initialize(byte0)
+                buffer.advancedBy((idx * 2) + 1).initialize(byte1)
+            }
+        }
+        if usedBufLen != nil {
+            // Every character was 2 bytes
+            usedBufLen.memory = range.length * 2
+        }
+
+
+    default:
+        fatalError("Attempted to get bytes of a Swift string using an unsupported encoding")
     }
-    if usedBufLen != nil {
-        usedBufLen.memory = range.length
-    }
+    
     return range.length
 }
 
@@ -151,6 +190,10 @@ internal func _CFSwiftStringFastContents(str: AnyObject) -> UnsafePointer<UniCha
 
 internal func _CFSwiftStringGetCString(str: AnyObject, buffer: UnsafeMutablePointer<Int8>, maxLength: Int, encoding: CFStringEncoding) -> Bool {
     return (str as! NSString).getCString(buffer, maxLength: maxLength, encoding: CFStringConvertEncodingToNSStringEncoding(encoding))
+}
+
+internal func _CFSwiftStringIsUnicode(str: AnyObject) -> Bool {
+    return (str as! NSString)._encodingCantBeStoredInEightBitCFString
 }
 
 internal func _CFSwiftStringInsert(str: AnyObject, index: CFIndex, inserted: AnyObject) {

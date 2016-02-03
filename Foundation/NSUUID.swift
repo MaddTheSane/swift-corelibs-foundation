@@ -32,7 +32,11 @@ public class NSUUID : NSObject, NSCopying, NSSecureCoding, NSCoding {
     }
     
     public init(UUIDBytes bytes: UnsafePointer<UInt8>) {
-        memcpy(unsafeBitCast(buffer, UnsafeMutablePointer<Void>.self), UnsafePointer<Void>(bytes), 16)
+        if (bytes != nil) {
+            memcpy(unsafeBitCast(buffer, UnsafeMutablePointer<Void>.self), UnsafePointer<Void>(bytes), 16)
+        } else {
+            memset(unsafeBitCast(buffer, UnsafeMutablePointer<Void>.self), 0, 16)
+        }
     }
     
     public func getUUIDBytes(uuid: UnsafeMutablePointer<UInt8>) {
@@ -40,11 +44,13 @@ public class NSUUID : NSObject, NSCopying, NSSecureCoding, NSCoding {
     }
     
     public var UUIDString: String {
-        get {
-            let strPtr = UnsafeMutablePointer<Int8>.alloc(37)
-            _cf_uuid_unparse_upper(buffer, strPtr)
-            return String(strPtr)
-        }
+        let strPtr = UnsafeMutablePointer<Int8>.alloc(37)
+        _cf_uuid_unparse_lower(buffer, strPtr)
+        return String.fromCString(strPtr)!
+    }
+    
+    public override func copy() -> AnyObject {
+        return copyWithZone(nil)
     }
     
     public func copyWithZone(zone: NSZone) -> AnyObject {
@@ -55,11 +61,43 @@ public class NSUUID : NSObject, NSCopying, NSSecureCoding, NSCoding {
         return true
     }
     
-    public required init?(coder: NSCoder) {
-        
+    public convenience required init?(coder: NSCoder) {
+        if coder.allowsKeyedCoding {
+            var length : Int = 0
+            let bytes = coder.decodeBytesForKey("NS.uuidbytes", returnedLength: &length)
+            if (length == 16) {
+                self.init(UUIDBytes: bytes)
+            } else {
+                self.init() // failure to decode the entire uuid_t results in a new uuid
+            }
+        } else {
+            // NSUUIDs cannot be decoded by non-keyed coders
+            coder.failWithError(NSError(domain: NSCocoaErrorDomain, code: NSCocoaError.CoderReadCorruptError.rawValue, userInfo: [
+                                "NSDebugDescription": "NSUUID cannot be decoded by non-keyed coders"
+                                ]))
+            return nil
+        }
     }
     
     public func encodeWithCoder(aCoder: NSCoder) {
-        
+        aCoder.encodeBytes(buffer, length: 16, forKey: "NS.uuidbytes")
+    }
+    
+    public override func isEqual(object: AnyObject?) -> Bool {
+        if object === self {
+            return true
+        } else if let other = object as? NSUUID {
+            return _cf_uuid_compare(buffer, other.buffer) == 0
+        } else {
+            return false
+        }
+    }
+    
+    public override var hash: Int {
+        return Int(bitPattern: CFHashBytes(buffer, 16))
+    }
+    
+    public override var description: String {
+        return UUIDString
     }
 }

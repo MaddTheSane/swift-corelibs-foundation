@@ -140,6 +140,11 @@ def main():
     
     if args.reconfigure:
         reconfigure(config, config.config_path.absolute())
+        for arg in extras:
+            if arg.lower() == 'debug':
+                config.build_mode = Configuration.Debug
+            elif arg.lower() == 'release':
+                config.build_mode = Configuration.Release
     else:
         config.build_mode = Configuration.Debug # by default build in debug mode
 
@@ -175,8 +180,9 @@ def main():
     config.write(config.config_path.absolute())
     Configuration.current = config
 
-    execfile(config.script_path.absolute())
+    exec(compile(open(config.script_path.absolute()).read(), config.script_path.absolute(), 'exec'))
 
 
 if __name__ == "__main__":
     main()
+

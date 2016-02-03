@@ -51,6 +51,10 @@ public class NSDecimalNumber : NSNumber {
         NSUnimplemented()
     }
     
+    public required convenience init(bytes buffer: UnsafePointer<Void>, objCType type: UnsafePointer<Int8>) {
+        NSRequiresConcreteImplementation()
+    }
+    
     public func descriptionWithLocale(locale: AnyObject?) -> String { NSUnimplemented() }
     
     // TODO: "declarations from extensions cannot be overridden yet"
@@ -84,7 +88,7 @@ public class NSDecimalNumber : NSNumber {
     public func decimalNumberByRoundingAccordingToBehavior(behavior: NSDecimalNumberBehaviors?) -> NSDecimalNumber { NSUnimplemented() }
     // Round to the scale of the behavior.
     
-    public func compare(decimalNumber: NSNumber) -> NSComparisonResult { NSUnimplemented() }
+    public override func compare(decimalNumber: NSNumber) -> NSComparisonResult { NSUnimplemented() }
     // compare two NSDecimalNumbers
     
     public class func setDefaultBehavior(behavior: NSDecimalNumberBehaviors) { NSUnimplemented() }
@@ -96,7 +100,7 @@ public class NSDecimalNumber : NSNumber {
     //   ignore exactnessException
     //   raise on overflow, underflow and divide by zero.
     
-    public var objCType: UnsafePointer<Int8> { NSUnimplemented() }
+    public override var objCType: UnsafePointer<Int8> { NSUnimplemented() }
     // return 'd' for double
     
     public override var doubleValue: Double { NSUnimplemented() }

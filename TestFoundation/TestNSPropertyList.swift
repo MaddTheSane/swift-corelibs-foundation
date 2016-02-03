@@ -19,7 +19,7 @@ import SwiftXCTest
 
 
 class TestNSPropertyList : XCTestCase {
-    var allTests : [(String, () -> ())] {
+    var allTests : [(String, () throws -> Void)] {
         return [
             ("test_BasicConstruction", test_BasicConstruction ),
             ("test_decode", test_decode ),

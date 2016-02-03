@@ -142,10 +142,31 @@ public class NSUserDefaults : NSObject {
         return bVal._swiftObject
     }
     public func dictionaryForKey(defaultName: String) -> [String : AnyObject]? {
-        guard let aVal = objectForKey(defaultName), bVal = aVal as? [String: AnyObject] else {
+        guard let aVal = objectForKey(defaultName), bVal = aVal as? NSDictionary else {
             return nil
         }
-        return bVal
+        //This got out of hand fast...
+        let cVal = bVal._swiftObject
+        enum convErr: ErrorType {
+            case ConvErr
+        }
+        do {
+            let dVal = try cVal.map({ (key, val) -> (String, AnyObject) in
+                if let strKey = key as? NSString {
+                    return (strKey._swiftObject, val)
+                } else {
+                    throw convErr.ConvErr
+                }
+            })
+            var eVal = [String : AnyObject]()
+            
+            for (key, value) in dVal {
+                eVal[key] = value
+            }
+            
+            return eVal
+        } catch _ { }
+        return nil
     }
     public func dataForKey(defaultName: String) -> NSData? {
         guard let aVal = objectForKey(defaultName), bVal = aVal as? NSData else {

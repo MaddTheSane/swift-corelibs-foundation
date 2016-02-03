@@ -22,6 +22,7 @@ public class NSUserDefaults : NSObject {
     public class func standardUserDefaults() -> NSUserDefaults {
         return sharedDefaults
     }
+    
     public class func resetStandardUserDefaults() {
         sharedDefaults.synchronize()
         sharedDefaults = NSUserDefaults()
@@ -30,9 +31,11 @@ public class NSUserDefaults : NSObject {
     public convenience override init() {
         self.init(suiteName: nil)!
     }
+    
+    /// nil suite means use the default search list that +standardUserDefaults uses
     public init?(suiteName suitename: String?) {
         suite = suitename
-    } //nil suite means use the default search list that +standardUserDefaults uses
+    }
     
     public func objectForKey(defaultName: String) -> AnyObject? {
         func getFromRegistered() -> AnyObject? {
@@ -46,10 +49,10 @@ public class NSUserDefaults : NSObject {
         //Force the returned value to an NSObject
         switch CFGetTypeID(anObj) {
         case CFStringGetTypeID():
-            return (anObj as! CFStringRef)._swiftObject
+            return (anObj as! CFStringRef)._nsObject
             
         case CFNumberGetTypeID():
-            return unsafeBitCast(anObj, NSNumber.self)
+            return (anObj as! CFNumberRef)._nsObject
             
         case CFURLGetTypeID():
             return (anObj as! CFURLRef)._nsObject
@@ -108,8 +111,16 @@ public class NSUserDefaults : NSObject {
             cfType = NSNumber(bool: bType)._cfObject
         } else if let bType = value as? [NSObject: AnyObject] {
             cfType = bType._cfObject
+        } else if let bType = value as? [String: AnyObject] {
+            cfType = bType.map({ (str, obj) -> (NSString, AnyObject) in
+                return (str._nsObject, obj)
+            })._cfObject
         } else if let bType = value as? [AnyObject] {
             cfType = bType._cfObject
+        } else if let bType = value as? [String] {
+            cfType = bType.map({ (aStr) -> NSString in
+                return aStr._nsObject
+            })._cfObject
         }
         
         CFPreferencesSetAppValue(defaultName._cfObject, cfType, suite?._cfObject ?? kCFPreferencesCurrentApplication)
@@ -210,13 +221,13 @@ public class NSUserDefaults : NSObject {
     
     public func dictionaryRepresentation() -> [String : AnyObject] {
         guard let aPref = CFPreferencesCopyMultiple(nil, kCFPreferencesCurrentApplication, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost),
-            bPref = (aPref._nsObject) as? [String: AnyObject] else {
+            bPref = (aPref._swiftObject) as? [NSString: AnyObject] else {
                 return registeredDefaults
         }
         var allDefaults = registeredDefaults
         
         for (key, value) in bPref {
-            allDefaults[key] = value
+            allDefaults[key._swiftObject] = value
         }
         
         return allDefaults
@@ -231,7 +242,9 @@ public class NSUserDefaults : NSObject {
     public func setPersistentDomain(domain: [String : AnyObject], forName domainName: String) { NSUnimplemented() }
     public func removePersistentDomainForName(domainName: String) { NSUnimplemented() }
     
-    public func synchronize() -> Bool { return CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication) }
+    public func synchronize() -> Bool {
+        return CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication)
+    }
     
     public func objectIsForcedForKey(key: String) -> Bool { NSUnimplemented() }
     public func objectIsForcedForKey(key: String, inDomain domain: String) -> Bool { NSUnimplemented() }

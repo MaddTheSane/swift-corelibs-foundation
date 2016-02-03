@@ -205,10 +205,19 @@ public class NSUserDefaults : NSObject {
         return bVal.boolValue
     }
     public func URLForKey(defaultName: String) -> NSURL? {
-        guard let aVal = objectForKey(defaultName), bVal = aVal as? NSURL else {
+        guard let aVal = objectForKey(defaultName) else {
             return nil
         }
-        return bVal
+        
+        if let bVal = aVal as? NSString {
+            let cVal = bVal.stringByExpandingTildeInPath
+            
+            return NSURL(fileURLWithPath: cVal)
+        } else if let bVal = aVal as? NSData {
+            return NSKeyedUnarchiver.unarchiveObjectWithData(bVal) as? NSURL
+        }
+        
+        return nil
     }
     
     public func setInteger(value: Int, forKey defaultName: String) {
@@ -224,7 +233,31 @@ public class NSUserDefaults : NSObject {
         setObject(NSNumber(bool: value), forKey: defaultName)
     }
     public func setURL(url: NSURL?, forKey defaultName: String) {
-        setObject(url, forKey: defaultName)
+		if let url = url {
+            //FIXME: CFURLIsFileReferenceURL is limited to OS X/iOS
+            #if os(OSX) || os(iOS)
+                //FIXME: no SwiftFoundation version of CFURLIsFileReferenceURL at time of writing!
+                if !CFURLIsFileReferenceURL(url._cfObject) {
+                    //FIXME: stringByAbbreviatingWithTildeInPath isn't implemented in SwiftFoundation
+                    //TODO: use stringByAbbreviatingWithTildeInPath when it is
+                    let urlPath = url.path!
+                    
+                    setObject(urlPath._nsObject, forKey: defaultName)
+                    return
+                }
+            #else
+                if let urlPath = url.path {
+                    //FIXME: stringByAbbreviatingWithTildeInPath isn't implemented in SwiftFoundation
+                    //TODO: use stringByAbbreviatingWithTildeInPath when it is
+                    setObject(urlPath._nsObject, forKey: defaultName)
+                    return
+                }
+            #endif
+            let data = NSKeyedArchiver.archivedDataWithRootObject(url)
+            setObject(data, forKey: defaultName)
+        } else {
+            setObject(nil, forKey: defaultName)
+        }
     }
     
     public func registerDefaults(registrationDictionary: [String : AnyObject]) {
